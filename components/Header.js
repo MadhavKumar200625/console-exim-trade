@@ -16,12 +16,12 @@ import {
 import { useState } from "react";
 
 const tabs = [
-  { name: "Home", icon: Home, href: "/home" },
+  { name: "Home", icon: Home, href: "/" },
   { name: "My Workspace", icon: Briefcase, href: "/workspace" },
-  { name: "My Downloads", icon: Download, href: "/downloads" },
+  { name: "My Downloads", icon: Download, href: "/mydownloads" },
   { name: "Subscription", icon: CreditCard, href: "/subscription" },
-  { name: "Analytics Data", icon: BarChart3, href: "/analytics" },
-  { name: "My Account", icon: User, href: "/account" },
+
+  { name: "My Account", icon: User, href: "/user-profile" },
 ];
 
 export default function Header() {
@@ -60,7 +60,7 @@ export default function Header() {
                 <span>{name}</span>
                 {/* Hover underline */}
                 <motion.span
-                  className="absolute bottom-[-6px] left-0 w-0 h-[2px] bg-blue-400"
+                  className="absolute -bottom-1.5 left-0 w-0 h-0.5 bg-blue-400"
                   whileHover={{ width: "100%" }}
                   transition={{ duration: 0.3 }}
                 />

@@ -24,7 +24,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 lg:px-8 py-10 text-[#003466] relative overflow-hidden">
+    <div className="min-h-screen bg-linear-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 lg:px-8 py-10 text-[#003466] relative overflow-hidden">
       {/* Floating Gradient Blur */}
       <div className="absolute inset-0 -z-10">
         <div className="absolute top-20 left-10 sm:left-32 w-64 sm:w-80 h-64 sm:h-80 bg-blue-200/40 blur-[120px] rounded-full"></div>
@@ -55,7 +55,7 @@ export default function Dashboard() {
         transition={{ duration: 0.8 }}
         className="relative max-w-7xl mx-auto mt-8 px-2"
       >
-        <div className="bg-gradient-to-r from-white/90 to-white/70 backdrop-blur-xl border border-blue-100 rounded-2xl sm:rounded-full p-6 sm:p-5 shadow-lg">
+        <div className="bg-linear-to-r from-white/90 to-white/70 backdrop-blur-xl border border-blue-100 rounded-2xl sm:rounded-full p-6 sm:p-5 shadow-lg">
           <div className="flex flex-col sm:flex-wrap sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-3">
             {/* Country Dropdown */}
             <select className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
@@ -88,7 +88,7 @@ export default function Dashboard() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.97 }}
-                className="flex justify-center items-center gap-2 text-white text-sm sm:text-base px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-800 rounded-full shadow-md hover:shadow-lg transition-all"
+                className="flex justify-center items-center gap-2 text-white text-sm sm:text-base px-5 py-3 bg-linear-to-r from-blue-600 to-blue-800 rounded-full shadow-md hover:shadow-lg transition-all"
               >
                 <Search size={18} /> Search
               </motion.button>
@@ -123,7 +123,7 @@ export default function Dashboard() {
           </div>
           <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
             <motion.div
-              className="h-2 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
+              className="h-2 bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
               initial={{ width: "0%" }}
               animate={{ width: "16%" }}
               transition={{ duration: 1 }}
@@ -140,7 +140,7 @@ export default function Dashboard() {
           </div>
           <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
             <motion.div
-              className="h-2 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full"
+              className="h-2 bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
               initial={{ width: "0%" }}
               animate={{ width: "10%" }}
               transition={{ duration: 1 }}
@@ -157,7 +157,7 @@ export default function Dashboard() {
           transition={{ type: "spring", stiffness: 200 }}
           className="bg-white/85 backdrop-blur-lg border border-white/70 rounded-2xl shadow-lg overflow-hidden"
         >
-          <div className="bg-gradient-to-r from-[#003466] to-[#005b96] text-white px-6 py-4 flex justify-between items-center">
+          <div className="bg-linear-to-r from-[#003466] to-[#005b96] text-white px-6 py-4 flex justify-between items-center">
             <h3 className="text-base sm:text-lg font-semibold">Recent Favorites</h3>
             <User size={18} />
           </div>
@@ -178,7 +178,7 @@ export default function Dashboard() {
           transition={{ type: "spring", stiffness: 200 }}
           className="bg-white/85 backdrop-blur-lg border border-white/70 rounded-2xl shadow-lg overflow-hidden"
         >
-          <div className="bg-gradient-to-r from-[#003466] to-[#005b96] text-white px-6 py-4 flex justify-between items-center">
+          <div className="bg-linear-to-r from-[#003466] to-[#005b96] text-white px-6 py-4 flex justify-between items-center">
             <h3 className="text-base sm:text-lg font-semibold">Recent Downloads</h3>
             <Download size={18} />
           </div>
@@ -265,7 +265,7 @@ export default function Dashboard() {
               <div className="flex justify-end">
                 <button
                   onClick={() => setShowAdvance(false)}
-                  className="px-5 py-2 text-sm sm:text-base text-white bg-gradient-to-r from-blue-500 to-blue-700 rounded-lg hover:shadow-lg transition"
+                  className="px-5 py-2 text-sm sm:text-base text-white bg-linear-to-r from-blue-500 to-blue-700 rounded-lg hover:shadow-lg transition"
                 >
                   Search Now
                 </button>
