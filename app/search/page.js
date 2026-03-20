@@ -18,6 +18,7 @@ import {
   Settings,
   Download,
 } from "lucide-react";
+import Synopsis from "./synopsis";
 
 const columns = [
   "Date",
@@ -121,6 +122,8 @@ export default function SearchPage() {
   const filterRef = useRef(null);
   const dropdownRef = useRef(null);
 
+  const formatDate = (date) =>
+  new Intl.DateTimeFormat("en-GB").format(new Date(date));
   useEffect(() => {
     function handleClickOutside(e) {
       if (filterRef.current && !filterRef.current.contains(e.target)) {
@@ -288,8 +291,7 @@ export default function SearchPage() {
 
       {/* DATE RANGE */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm px-5 py-2 rounded-lg shadow font-medium">
-        {new Date(dateRange.start).toLocaleDateString()} —{" "}
-        {new Date(dateRange.end).toLocaleDateString()}
+        {formatDate(dateRange.start)} — {formatDate(dateRange.end)}
       </div>
 
 
@@ -623,7 +625,9 @@ export default function SearchPage() {
       </div>
 
       {/* TABLE CONTAINER */}
-      <div
+
+      {activeTab === "data" ?(
+        <div
         className={`${fullscreen ? "fixed inset-0 z-50 bg-white p-6" : "w-full"}`}
       >
         <div className="w-full overflow-auto rounded-2xl border border-white/70 shadow-lg bg-white/80 backdrop-blur-xl">
@@ -782,6 +786,8 @@ export default function SearchPage() {
           </button>
         )}
       </div>
+      ) : (<Synopsis />)}
+      
       {/* ADVANCED SEARCH MODAL */}
       <AnimatePresence>
         {showAdvance && (

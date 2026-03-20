@@ -13,6 +13,26 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+const synopsisData = {
+  buyers: [
+    { name: "Thailand", value: 562342370 },
+    { name: "USA", value: 171377914 },
+    { name: "UAE", value: 99301679 },
+    { name: "Vietnam", value: 37483507 },
+  ],
+  sellers: [
+    { name: "Indonesia", value: 690880105 },
+    { name: "Mexico", value: 171257510 },
+    { name: "Vietnam", value: 91047477 },
+    { name: "India", value: 46008367 },
+  ],
+  companies: [
+    { name: "Amaryllis Jewelry", value: 375377515 },
+    { name: "Siam Jewelry", value: 104784250 },
+    { name: "Tigris Gold", value: 86154695 },
+  ],
+};
+
 const columns = [
   "Date",
   "HS Code",
