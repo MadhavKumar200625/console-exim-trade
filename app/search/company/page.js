@@ -7,16 +7,20 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import AboutCompany from "./AboutCompany";
+import Analytics from "./Analytics";
+import MarketPartners from "./MarketPartners";
+import PortAnalysis from "./PortAnalysis";
+import SimilarBuyers from "./SimilarBuyers";
 
 /* ---------- TABS CONFIG ---------- */
 const tabs = [
   "About Us",
   "Analytics",
-  "Buyers",
-  "Suppliers",
-  "Products",
-  "Ports",
-  "",
+  "Market And Partners",
+  "Port Analysis",
+  "Nexus",
+  "Similar Buyers",
+  "Contact Us",
 ];
 
 /* ---------- DUMMY COMPONENTS ---------- */
@@ -25,17 +29,17 @@ const TabContent = ({ activeTab }) => {
     case "About Us":
       return <AboutCompany/>;
     case "Analytics":
-      return <div className="p-6">Analytics Content</div>;
-    case "Buyers":
-      return <div className="p-6">Buyers Content</div>;
-    case "Suppliers":
-      return <div className="p-6">Suppliers Content</div>;
-    case "Products":
-      return <div className="p-6">Products Content</div>;
-    case "Ports":
-      return <div className="p-6">Ports Content</div>;
-    case "Analytics":
-      return <div className="p-6">Analytics Content</div>;
+      return <Analytics/>;
+    case "Market And Partners":
+      return <MarketPartners />;
+    case "Port Analysis":
+      return <PortAnalysis/>
+    case "Similar Buyers":
+      return <SimilarBuyers/>
+    case "Nexus":
+      return <div className="p-6">Nexus Content</div>;
+    case "Contact Us":
+      return <div className="p-6">Contact Us Content</div>;
     default:
       return <AboutCompany/>;
   }
