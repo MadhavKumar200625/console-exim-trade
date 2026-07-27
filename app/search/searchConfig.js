@@ -1,0 +1,138 @@
+export const DEFAULT_COUNTRY = "India";
+export const DEFAULT_DATA_TYPE = "Import";
+export const DEFAULT_FROM_DATE = "2010-01-01";
+export const DEFAULT_TO_DATE = "2026-12-31";
+
+export const COUNTRIES = [
+  "India",
+  "USA",
+  "China",
+  "Germany",
+  "Vietnam",
+  "Indonesia",
+  "Thailand",
+  "UAE",
+];
+
+export const DATA_TYPES = ["Import", "Export"];
+export const MATCH_MODES = ["exact", "prefix", "contains", "suffix"];
+export const OPERATORS = ["AND", "OR"];
+
+export const SEARCH_FIELDS = [
+  "HS_Code",
+  "Importer_Name",
+  "Exporter_Name",
+  "Importer_ID",
+  "Exporter_ID",
+  "Export_Country",
+  "Import_Country",
+  "Exporter_Country",
+  "Loading_Port",
+  "Unloading_Port",
+  "Chapter",
+  "Heading",
+  "Sub_Heading",
+  "Transport_Mode",
+  "Declaration_Number",
+  "year",
+  "month",
+  "BL_Number",
+  "Broker_Name",
+  "CHA_ID",
+  "CHA_Name",
+  "Challan_NO",
+  "Clearing_Date",
+  "Currency_Name",
+  "Date_of_Establishment",
+  "Date_of_Invoice",
+  "Declaration_Date",
+  "Declared_Quantity",
+  "Declared_Total_Value",
+  "Exchange_Rate_Usd",
+  "Exchange_Rate_in_VND",
+  "Export_Country_Code",
+  "Exporter_Address",
+  "Exporter_District",
+  "Exporter_Email",
+  "Exporter_PAN",
+  "Exporter_Pin_Code",
+  "Exporter_State",
+  "FOB_Value_in_Lac",
+  "Gross_Weight_in_KG",
+  "HS_CODE_Description",
+  "Import_Paid_Duty_INR",
+  "Import_Paid_Duty_USD",
+  "Importer_Address",
+  "Importer_District",
+  "Importer_Email",
+  "Importer_Pin_Code",
+  "Importer_State",
+  "Invoice_Number",
+  "Invoice_Unit_Value_in_FC",
+  "Invoice_Value",
+  "Item_No",
+  "Loading_Port_Code",
+  "Means_Of_Transportation",
+  "Org_Exporter_Address",
+  "Org_Exporter_ID",
+  "Org_Exporter_Name",
+  "Org_Importer_Address",
+  "Org_Importer_ID",
+  "Org_Importer_Name",
+  "Org_Loading_Port",
+  "Org_Product_Description",
+  "Org_Unloading_Port",
+  "Product_Description",
+  "Quantity",
+  "Tax_Amount",
+  "Total_Value_in_FC",
+  "Total_Value_in_INR",
+  "Total_Value_in_USD",
+  "Total_Value_in_VND",
+  "Unit_Name",
+  "Unit_Price_in_FC",
+  "Unit_Price_in_USD",
+  "Unit_Value_in_INR",
+  "Unit_Value_in_USD",
+  "Unloading_Port_Code",
+  "exporter_contact",
+  "exporter_contact_person",
+  "importer_Contact_Old",
+  "importer_contact",
+  "importer_contact_person",
+];
+
+export const DEFAULT_COLUMNS = [
+  "Date",
+  "HS_Code",
+  "Product_Description",
+  "Exporter_Name",
+  "Export_Country",
+  "Importer_Name",
+  "Import_Country",
+  "Quantity",
+  "Unit_Name",
+  "Unit_Value_in_USD",
+  "Currency_Name",
+  "Loading_Port",
+  "Unloading_Port",
+  "Transport_Mode",
+  "Total_Value_in_USD",
+];
+
+export const SORT_FIELDS = [
+  "Date",
+  "Total_Value_in_USD",
+  "Total_Value_in_INR",
+  "Total_Value_in_VND",
+  "Quantity",
+  "HS_Code",
+  "Table_Name",
+  "Gross_Weight_in_KG",
+];
+
+export function labelForField(field) {
+  return field
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
