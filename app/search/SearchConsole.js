@@ -1542,23 +1542,7 @@ export default function SearchConsole({
                   );
                 })}
               </div>
-              <div className="flex justify-between">
-                <button
-                  onClick={() =>
-                    setAdvancedRows((current) => [
-                      ...current,
-                      {
-                        operator: "AND",
-                        field: "HS_Code",
-                        mode: "contains",
-                        value: "",
-                      },
-                    ])
-                  }
-                  className="px-5 py-2 text-sm sm:text-base text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition"
-                >
-                  Add Field
-                </button>
+              <div className="flex justify-end">
                 <button
                   onClick={() => {
                     setShowAdvance(false);
