@@ -54,7 +54,7 @@ async function fetchSuggestions(params) {
   const query = readParam(params, "suggestQuery").trim();
   if (query.length < 2) return [];
 
-  const country = readParam(params, "suggestCountry", "India");
+  const country = readParam(params, "suggestCountry", "");
   const tradeType = readParam(params, "suggestTradeType", "export");
   const currency = readParam(params, "suggestCurrency", "USD");
   const type = readParam(params, "suggestType", "hscode");
@@ -83,7 +83,6 @@ async function fetchSuggestions(params) {
   }
 
   const payload = {
-    Table_Name: `${country}_${tradeType === "import" ? "Import" : "Export"}`,
     date_range: {
       from,
       to,
@@ -105,6 +104,12 @@ async function fetchSuggestions(params) {
       offset: 0,
     },
   };
+
+  if (country) {
+    payload.Table_Name = `${country}_${tradeType === "import" ? "Import" : "Export"}`;
+  } else {
+    payload.global = true;
+  }
 
   try {
     const response = await fetch(

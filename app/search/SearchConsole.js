@@ -82,6 +82,12 @@ const randomRows = Array.from({ length: 120 }).map((_, i) => ({
   "Trade Type": "Export",
 }));
 
+const defaultGlobalSummary = {
+  total_shipments: 538413846,
+  total_quantity: 20180394833963.258,
+  total_value_usd: 8642876888368.149,
+};
+
 export default function SearchConsole({
   initialSuggestions = [],
   initialSuggestionQuery = "",
@@ -90,7 +96,7 @@ export default function SearchConsole({
   const searchParams = useSearchParams();
   const countries = ["India", "USA", "China", "Germany"];
   const currencies = ["USD", "EUR", "INR", "CNY"];
-  const [country, setCountry] = useState("India");
+  const [country, setCountry] = useState("");
   const [currency, setCurrency] = useState("USD");
 
   const [showCountry, setShowCountry] = useState(false);
@@ -106,6 +112,7 @@ export default function SearchConsole({
   const [totalRecords, setTotalRecords] = useState(randomRows.length);
   const [lastIncludeAdvanced, setLastIncludeAdvanced] = useState(true);
   const [rows, setRows] = useState(randomRows.slice(0, 25));
+  const [summary, setSummary] = useState(defaultGlobalSummary);
   const [isLoading, setIsLoading] = useState(false);
   const [apiMessage, setApiMessage] = useState("");
   const [toast, setToast] = useState(null);
@@ -135,7 +142,11 @@ export default function SearchConsole({
       if (trimmedQuery.length >= 2) {
         params.set("suggestQuery", trimmedQuery);
         params.set("suggestType", searchType);
-        params.set("suggestCountry", country);
+        if (country) {
+          params.set("suggestCountry", country);
+        } else {
+          params.delete("suggestCountry");
+        }
         params.set("suggestTradeType", tradeType);
         params.set("suggestCurrency", currency);
         params.set("suggestFrom", dateRange.start);
@@ -313,6 +324,27 @@ export default function SearchConsole({
     );
   }
 
+  function getSummaryData(data) {
+    if (!data || typeof data !== "object") return null;
+
+    if (
+      data.total_shipments !== undefined ||
+      data.total_quantity !== undefined ||
+      data.total_value_usd !== undefined
+    ) {
+      return data;
+    }
+
+    for (const key of ["data", "summary", "result", "totals"]) {
+      const value = data[key];
+      if (!value || typeof value !== "object") continue;
+      const nested = getSummaryData(value);
+      if (nested) return nested;
+    }
+
+    return null;
+  }
+
   function getDemoPage(offset = pageOffset, limit = pageSize) {
     return randomRows.slice(offset, offset + limit);
   }
@@ -359,7 +391,6 @@ export default function SearchConsole({
 
   function buildSearchPayload(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
     const payload = {
-      Table_Name: `${country}_${tradeType === "import" ? "Import" : "Export"}`,
       date_range: {
         from: dateRange.start,
         to: dateRange.end,
@@ -376,6 +407,12 @@ export default function SearchConsole({
       },
     };
 
+    if (country) {
+      payload.Table_Name = `${country}_${tradeType === "import" ? "Import" : "Export"}`;
+    } else {
+      payload.global = true;
+    }
+
     if (!Object.keys(payload.filters).length) {
       delete payload.filters;
     }
@@ -383,12 +420,28 @@ export default function SearchConsole({
     return payload;
   }
 
-  async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
-    if (!country) {
-      setApiMessage("Please select a country before searching.");
-      return;
+  async function fetchSummary(payload) {
+    const response = await fetch("/api/trades/summary", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.message || "Unable to load trade summary.");
     }
 
+    const nextSummary = getSummaryData(data);
+    if (nextSummary) {
+      setSummary(nextSummary);
+    }
+  }
+
+  async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
     const payload = buildSearchPayload(includeAdvanced, nextOffset, nextLimit);
 
     setPageOffset(nextOffset);
@@ -400,17 +453,28 @@ export default function SearchConsole({
     setSuggestions([]);
 
     try {
-      const response = await fetch("/api/trades/search", {
+      const [response, summaryResult] = await Promise.allSettled([
+        fetch("/api/trades/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-      });
+        }),
+        fetchSummary(payload),
+      ]);
 
-      const data = await response.json();
+      if (summaryResult.status === "rejected") {
+        setApiMessage(summaryResult.reason?.message || "Unable to load trade summary.");
+      }
 
-      if (!response.ok) {
+      if (response.status === "rejected") {
+        throw response.reason;
+      }
+
+      const data = await response.value.json();
+
+      if (!response.value.ok) {
         throw new Error(data?.message || "Unable to load trade data.");
       }
 
@@ -423,12 +487,11 @@ export default function SearchConsole({
       } else {
         setRows(getDemoPage(nextOffset, nextLimit));
         setTotalRecords(randomRows.length);
-        setApiMessage("No API rows returned. Showing demo data.");
+        setApiMessage((current) =>
+          current || "No API rows returned. Showing demo data.",
+        );
         showTableToast("Table updated with demo data.");
       }
-
-      // trades/report is intentionally disabled for now because it slows this page.
-      // The summary cards below are derived from the currently loaded table rows.
     } catch (error) {
       setRows(getDemoPage(nextOffset, nextLimit));
       setTotalRecords(randomRows.length);
@@ -465,22 +528,25 @@ export default function SearchConsole({
   function getReportCards() {
     return [
       {
-        label: "Total Shipment Value",
-        value: `$${totalShipmentValue.toLocaleString()}`,
+        label: "Total Shipments",
+        value: Number(summary?.total_shipments || totalRecords).toLocaleString(),
       },
       {
-        label: `${tradeType === "export" ? "Export" : "Import"} Shipment Records`,
-        value: totalRecords.toLocaleString(),
+        label: "Total Quantity",
+        value: Number(
+          summary?.total_quantity ||
+            rows.reduce((sum, row) => sum + (Number(row["Quantity"]) || 0), 0),
+        ).toLocaleString(undefined, { maximumFractionDigits: 3 }),
       },
       {
-        label: "Visible Quantity",
-        value: rows
-          .reduce((sum, row) => sum + (Number(row["Quantity"]) || 0), 0)
-          .toLocaleString(),
+        label: "Total Value USD",
+        value: `$${Number(
+          summary?.total_value_usd || totalShipmentValue,
+        ).toLocaleString(undefined, { maximumFractionDigits: 3 })}`,
       },
       {
-        label: "Active Country",
-        value: country,
+        label: "Scope",
+        value: country || "Global",
       },
     ];
   }
@@ -665,7 +731,7 @@ export default function SearchConsole({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-[auto_1fr_auto] xl:items-center">
+          <div className="mt-5 grid gap-4 xl:grid-cols-[auto_auto_minmax(360px,1fr)] xl:items-center">
             <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
               {[
                 { id: "import", label: "Imports" },
@@ -683,61 +749,6 @@ export default function SearchConsole({
                   {item.label}
                 </button>
               ))}
-            </div>
-
-            <div ref={searchBoxRef} className="relative">
-              <div className="flex min-h-[64px] items-center gap-3 rounded-[24px] border border-blue-100 bg-white px-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7),0_18px_45px_rgba(0,52,102,0.10)]">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-blue-400 text-white shadow-md">
-                  <Search size={20} />
-                </div>
-                <input
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setShowSuggestions(e.target.value.trim().length >= 2);
-                  }}
-                  onFocus={() => {
-                    if (query.trim().length >= 2) {
-                      setShowSuggestions(true);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") handleSearch(false, 0, pageSize);
-                  }}
-                  placeholder={
-                    searchType === "industry"
-                      ? "Ask for an industry, market, or sector"
-                      : "Search HS code, product, importer, exporter..."
-                  }
-                  className="min-w-0 flex-1 bg-transparent text-base font-semibold text-[#003466] outline-none placeholder:text-slate-400"
-                />
-                <button
-                  onClick={() => handleSearch(false, 0, pageSize)}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-60"
-                >
-                  {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
-                  Search
-                </button>
-              </div>
-
-              {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute top-[72px] left-16 right-4 z-[9999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
-                  {suggestions.map((item, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setQuery(item);
-                        setShowSuggestions(false);
-                        setSuggestions([]);
-                      }}
-                      className="block w-full px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-blue-50"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
@@ -806,6 +817,61 @@ export default function SearchConsole({
               <button className="flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50">
                 <Lightbulb size={18} />
               </button>
+            </div>
+
+            <div ref={searchBoxRef} className="relative xl:justify-self-end xl:w-full xl:max-w-3xl">
+              <div className="flex min-h-[64px] items-center gap-3 rounded-[24px] border border-blue-100 bg-white px-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7),0_18px_45px_rgba(0,52,102,0.10)]">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-blue-400 text-white shadow-md">
+                  <Search size={20} />
+                </div>
+                <input
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setShowSuggestions(e.target.value.trim().length >= 2);
+                  }}
+                  onFocus={() => {
+                    if (query.trim().length >= 2) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleSearch(false, 0, pageSize);
+                  }}
+                  placeholder={
+                    searchType === "industry"
+                      ? "Ask for an industry, market, or sector"
+                      : "Search HS code, product, importer, exporter..."
+                  }
+                  className="min-w-0 flex-1 bg-transparent text-base font-semibold text-[#003466] outline-none placeholder:text-slate-400"
+                />
+                <button
+                  onClick={() => handleSearch(false, 0, pageSize)}
+                  disabled={isLoading}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+                  Search
+                </button>
+              </div>
+
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute top-[72px] left-16 right-4 z-[9999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                  {suggestions.map((item, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setQuery(item);
+                        setShowSuggestions(false);
+                        setSuggestions([]);
+                      }}
+                      className="block w-full px-4 py-3 text-left text-sm font-semibold text-slate-700 hover:bg-blue-50"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -925,7 +991,7 @@ export default function SearchConsole({
               className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-gradient-to-b from-white to-blue-50/60 px-4 py-3 text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
             >
               <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
-              <span className="font-bold text-[#003466]">{country}</span>
+              <span className="font-bold text-[#003466]">{country || "Global"}</span>
 
               <ChevronDown
                 size={16}
@@ -935,16 +1001,16 @@ export default function SearchConsole({
 
             {showCountry && (
               <div className="absolute top-14 left-0 w-44 bg-white border border-blue-100 rounded-2xl shadow-2xl overflow-hidden z-50">
-                {countries.map((c) => (
+                {["", ...countries].map((c) => (
                   <div
-                    key={c}
+                    key={c || "global"}
                     onClick={() => {
                       setCountry(c);
                       setShowCountry(false);
                     }}
                     className="px-4 py-3 text-sm font-semibold cursor-pointer hover:bg-blue-50 transition"
                   >
-                    {c}
+                    {c || "Global"}
                   </div>
                 ))}
               </div>
@@ -1053,7 +1119,7 @@ export default function SearchConsole({
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {country} {tradeType} data · {currency} · {formatDate(dateRange.start)} to {formatDate(dateRange.end)}
+                  {country ? `${country} ${tradeType}` : "Global"} data · {currency} · {formatDate(dateRange.start)} to {formatDate(dateRange.end)}
                 </p>
               </div>
             </div>
@@ -1365,11 +1431,10 @@ export default function SearchConsole({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 <select
                   value={country}
-                  required
                   onChange={(event) => setCountry(event.target.value)}
                   className="border border-gray-300 rounded-lg px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-400"
                 >
-                  <option value="">Select Country</option>
+                  <option value="">Global</option>
                   {countries.map((item) => (
                     <option key={item} value={item}>
                       {item}
