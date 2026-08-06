@@ -116,13 +116,14 @@ export default function SearchConsole({
   const [isLoading, setIsLoading] = useState(false);
   const [apiMessage, setApiMessage] = useState("");
   const [toast, setToast] = useState(null);
-  const [advancedRows, setAdvancedRows] = useState([
-    { operator: "AND", field: "HS_Code", mode: "prefix", value: "" },
-    { operator: "AND", field: "Importer_Name", mode: "contains", value: "" },
-    { operator: "AND", field: "Product_Description", mode: "contains", value: "" },
-  ]);
-  const [activeFieldDropdown, setActiveFieldDropdown] = useState(null);
-  const [fieldQueries, setFieldQueries] = useState({});
+  const [advancedRows, setAdvancedRows] = useState(
+    SEARCH_FIELDS.map((field) => ({
+      operator: "AND",
+      field,
+      mode: field === "HS_Code" ? "prefix" : "contains",
+      value: "",
+    })),
+  );
 
   const [dateRange, setDateRange] = useState({
     start: "2025-08-28",
@@ -268,20 +269,6 @@ export default function SearchConsole({
         itemIndex === index ? { ...item, [key]: value } : item,
       ),
     );
-  }
-
-  function getFieldQuery(index, field) {
-    return fieldQueries[index] ?? labelForField(field);
-  }
-
-  function updateFieldQuery(index, value) {
-    setFieldQueries((current) => ({ ...current, [index]: value }));
-  }
-
-  function selectAdvancedField(index, field) {
-    updateAdvancedRow(index, "field", field);
-    updateFieldQuery(index, labelForField(field));
-    setActiveFieldDropdown(null);
   }
 
   function normalizeApiRows(apiRows) {
@@ -1405,152 +1392,141 @@ export default function SearchConsole({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50"
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-sm"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-[90%] sm:w-[600px]"
+              className="max-h-[86vh] w-[92%] overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_28px_90px_rgba(0,35,70,0.26)] sm:w-[860px]"
             >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg sm:text-xl font-semibold text-[#003466]">
-                  Advanced Search
-                </h2>
-                <button onClick={() => setShowAdvance(false)}>
-                  <X
-                    size={22}
-                    className="text-gray-500 hover:text-blue-600 transition"
-                  />
+              <div className="flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5 sm:px-8">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#031c35] text-cyan-200 shadow-lg shadow-blue-950/20">
+                    <SlidersHorizontal size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight text-[#003466] sm:text-xl">
+                      Advanced Search
+                    </h2>
+                    <p className="mt-1 text-xs font-medium text-slate-500 sm:text-sm">
+                      Refine the API payload with fixed trade fields.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowAdvance(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-100 bg-white text-slate-500 shadow-sm transition hover:bg-blue-50 hover:text-blue-700"
+                >
+                  <X size={20} />
                 </button>
               </div>
-              <p className="text-gray-600 mb-6 text-xs sm:text-sm">
-                Configure more filters to refine your data exploration.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                <select
-                  value={country}
-                  onChange={(event) => setCountry(event.target.value)}
-                  className="border border-gray-300 rounded-lg px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="">Global</option>
-                  {countries.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={tradeType}
-                  onChange={(event) => setTradeType(event.target.value)}
-                  className="border border-gray-300 rounded-lg px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="import">Import</option>
-                  <option value="export">Export</option>
-                </select>
-                {advancedRows.map((row, index) => {
-                  const fieldQuery = getFieldQuery(index, row.field);
-                  const filteredFields = SEARCH_FIELDS.filter((field) =>
-                    labelForField(field)
-                      .toLowerCase()
-                      .includes(fieldQuery.toLowerCase()),
-                  );
 
-                  return (
-                  <div key={index} className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:col-span-2">
+              <div className="max-h-[calc(86vh-90px)] overflow-auto px-6 py-6 sm:px-8">
+                <div className="mb-6 grid grid-cols-1 gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">
+                      Scope
+                    </span>
                     <select
-                      value={row.operator}
-                      onChange={(event) =>
-                        updateAdvancedRow(index, "operator", event.target.value)
-                      }
-                      className="border border-gray-300 rounded-lg px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-400"
+                      value={country}
+                      onChange={(event) => setCountry(event.target.value)}
+                      className="h-12 w-full rounded-xl border border-blue-100 bg-white px-4 text-sm font-bold text-[#003466] outline-none transition focus:ring-2 focus:ring-blue-400"
                     >
-                      <option value="AND">AND</option>
-                      <option value="OR">OR</option>
-                    </select>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={fieldQuery}
-                        onFocus={() => {
-                          setActiveFieldDropdown(index);
-                          updateFieldQuery(index, labelForField(row.field));
-                        }}
-                        onChange={(event) => {
-                          setActiveFieldDropdown(index);
-                          updateFieldQuery(index, event.target.value);
-                        }}
-                        placeholder="Search Field"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2 pr-9 text-sm sm:text-base outline-none focus:ring-2 focus:ring-blue-400"
-                      />
-                      <ChevronDown
-                        size={16}
-                        className={`pointer-events-none absolute right-3 top-3 text-gray-400 transition ${
-                          activeFieldDropdown === index ? "rotate-180" : ""
-                        }`}
-                      />
-                      {activeFieldDropdown === index && (
-                        <div className="absolute top-12 left-0 z-50 max-h-56 w-full overflow-auto rounded-xl border border-blue-100 bg-white shadow-xl">
-                          {filteredFields.length > 0 ? (
-                            filteredFields.map((field) => (
-                              <button
-                                key={field}
-                                type="button"
-                                onMouseDown={(event) => event.preventDefault()}
-                                onClick={() => selectAdvancedField(index, field)}
-                                className={`block w-full px-4 py-2 text-left text-sm hover:bg-blue-50 ${
-                                  row.field === field
-                                    ? "bg-blue-50 text-blue-700"
-                                    : "text-gray-700"
-                                }`}
-                              >
-                                {labelForField(field)}
-                              </button>
-                            ))
-                          ) : (
-                            <div className="px-4 py-3 text-sm text-gray-500">
-                              No fields found
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <select
-                      value={row.mode}
-                      onChange={(event) =>
-                        updateAdvancedRow(index, "mode", event.target.value)
-                      }
-                      className="border border-gray-300 rounded-lg px-4 py-2 text-sm sm:text-base focus:ring-2 focus:ring-blue-400"
-                    >
-                      {MATCH_MODES.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {labelForField(mode)}
+                      <option value="">Global</option>
+                      {countries.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
                         </option>
                       ))}
                     </select>
-                    <input
-                      type="text"
-                      value={row.value}
-                      onChange={(event) =>
-                        updateAdvancedRow(index, "value", event.target.value)
-                      }
-                      placeholder="Keyword"
-                      className="border border-gray-300 rounded-lg px-4 py-2 text-sm sm:text-base outline-none focus:ring-2 focus:ring-blue-400"
-                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">
+                      Trade Type
+                    </span>
+                    <select
+                      value={tradeType}
+                      onChange={(event) => setTradeType(event.target.value)}
+                      className="h-12 w-full rounded-xl border border-blue-100 bg-white px-4 text-sm font-bold text-[#003466] outline-none transition focus:ring-2 focus:ring-blue-400"
+                    >
+                      <option value="import">Import</option>
+                      <option value="export">Export</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+                  <div className="hidden grid-cols-[92px_1.25fr_150px_1.3fr] gap-3 border-b border-blue-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 sm:grid">
+                    <span>Logic</span>
+                    <span>Field</span>
+                    <span>Match</span>
+                    <span>Value</span>
                   </div>
-                  );
-                })}
+                  <div className="divide-y divide-blue-50">
+                    {advancedRows.map((row, index) => (
+                      <div
+                        key={row.field}
+                        className="grid grid-cols-1 gap-3 px-4 py-3 transition hover:bg-blue-50/45 sm:grid-cols-[92px_1.25fr_150px_1.3fr] sm:items-center"
+                      >
+                        <select
+                          value={row.operator}
+                          onChange={(event) =>
+                            updateAdvancedRow(index, "operator", event.target.value)
+                          }
+                          className="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm font-bold text-blue-700 outline-none transition focus:ring-2 focus:ring-blue-400"
+                        >
+                          <option value="AND">AND</option>
+                          <option value="OR">OR</option>
+                        </select>
+                        <div className="flex min-h-11 items-center rounded-xl border border-transparent bg-slate-50 px-4 font-mono text-xs font-bold text-[#003466] ring-1 ring-slate-200 sm:text-sm">
+                          {row.field}
+                        </div>
+                        <select
+                          value={row.mode}
+                          onChange={(event) =>
+                            updateAdvancedRow(index, "mode", event.target.value)
+                          }
+                          className="h-11 rounded-xl border border-blue-100 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:ring-2 focus:ring-blue-400"
+                        >
+                          {MATCH_MODES.map((mode) => (
+                            <option key={mode} value={mode}>
+                              {labelForField(mode)}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={row.value}
+                          onChange={(event) =>
+                            updateAdvancedRow(index, "value", event.target.value)
+                          }
+                          placeholder="Keyword"
+                          className="h-11 rounded-xl border border-blue-100 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:ring-2 focus:ring-blue-400"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-end">
+
+              <div className="flex items-center justify-end border-t border-blue-100 bg-white px-6 py-4 sm:px-8">
+                <button
+                  onClick={() => setShowAdvance(false)}
+                  className="mr-3 rounded-xl border border-blue-100 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"
+                >
+                  Cancel
+                </button>
                 <button
                   onClick={() => {
                     setShowAdvance(false);
                     handleSearch(true);
                   }}
                   disabled={isLoading}
-                  className="px-5 py-2 text-sm sm:text-base text-white bg-linear-to-r from-blue-500 to-blue-700 rounded-lg hover:shadow-lg transition"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-60"
                 >
+                  {isLoading && <RefreshCw size={16} className="animate-spin" />}
                   {isLoading ? "Loading" : "Search Now"}
                 </button>
               </div>
