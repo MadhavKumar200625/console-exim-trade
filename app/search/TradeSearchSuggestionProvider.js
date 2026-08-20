@@ -56,7 +56,6 @@ async function fetchSuggestions(params) {
 
   const country = readParam(params, "suggestCountry", "");
   const tradeType = readParam(params, "suggestTradeType", "export");
-  const currency = readParam(params, "suggestCurrency", "USD");
   const type = readParam(params, "suggestType", "hscode");
   const from = readParam(params, "suggestFrom", "2010-01-01");
   const to = readParam(params, "suggestTo", "2026-12-31");
@@ -66,10 +65,7 @@ async function fetchSuggestions(params) {
 
   if (!baseUrl) return [];
 
-  const filters = {
-    Currency_Name: currency,
-    Currency_Name_mode: "exact",
-  };
+  const filters = {};
 
   if (type === "industry") {
     filters.Product_Description = query;

@@ -26,39 +26,109 @@ import {
 } from "lucide-react";
 import { MATCH_MODES, SEARCH_FIELDS, labelForField } from "./searchConfig";
 
-const columns = [
+const exportColumns = [
   "Date",
-  "HS Code",
-  "Product",
-  "Exporter",
-  "Exporter Country",
-  "Importer",
-  "Importer Country",
+  "Country",
+  "Import_Country",
+  "Importer_ID",
+  "Importer_Name",
+  "Importer_Address",
+  "Exporter_ID",
+  "Exporter_Name",
+  "Exporter_Address",
+  "Loading_Port",
+  "Unloading_Port",
+  "HS_Code",
+  "HS_Code_Description",
+  "Product_Description",
   "Quantity",
-  "Unit",
-  "Price",
-  "Currency",
-  "Port",
-  "Shipment Mode",
-  "Trade Type",
+  "Net_Weight_in_KG",
+  "Gross_Weight_in_KG",
+  "Unit_Name",
+  "Total_Value_in_USD",
+  "Heading",
+  "Chapter",
+  "Month",
+  "Year",
+  "Package_Unit",
+  "No_of_Packages",
+  "Transport_Mode",
+  "ID",
+];
+
+const importColumns = [
+  "Date",
+  "Country",
+  "Export_Country",
+  "Exporter_ID",
+  "Exporter_Name",
+  "Exporter_Address",
+  "Importer_ID",
+  "Importer_Name",
+  "Importer_Address",
+  "Unloading_Port",
+  "Loading_Port",
+  "HS_Code",
+  "HS_Code_Description",
+  "Product_Description",
+  "Quantity",
+  "Net_Weight_in_KG",
+  "Gross_Weight_in_KG",
+  "Unit_Name",
+  "Total_Value_in_USD",
+  "Heading",
+  "Chapter",
+  "Month",
+  "Year",
+  "Package_Unit",
+  "No_of_Packages",
+  "Transport_Mode",
+  "ID",
 ];
 
 const apiColumnMap = {
   Date: "Date",
-  "HS Code": "HS_Code",
-  Product: "Product_Description",
-  Exporter: "Exporter_Name",
-  "Exporter Country": "Export_Country",
-  Importer: "Importer_Name",
-  "Importer Country": "Import_Country",
+  Country: "Country",
+  Import_Country: "Import_Country",
+  Export_Country: "Export_Country",
+  Importer_ID: "Importer_ID",
+  Importer_Name: "Importer_Name",
+  Importer_Address: "Importer_Address",
+  Exporter_ID: "Exporter_ID",
+  Exporter_Name: "Exporter_Name",
+  Exporter_Address: "Exporter_Address",
+  Loading_Port: "Loading_Port",
+  Unloading_Port: "Unloading_Port",
+  HS_Code: "HS_Code",
+  HS_Code_Description: "HS_CODE_Description",
+  Product_Description: "Product_Description",
   Quantity: "Quantity",
-  Unit: "Unit_Name",
-  Price: "Unit_Value_in_USD",
-  Currency: "Currency_Name",
-  Port: "Loading_Port",
-  "Shipment Mode": "Transport_Mode",
-  "Trade Type": "Table_Name",
+  Net_Weight_in_KG: "Net_Weight_in_KG",
+  Gross_Weight_in_KG: "Gross_Weight_in_KG",
+  Unit_Name: "Unit_Name",
+  Total_Value_in_USD: "Total_Value_in_USD",
+  Heading: "Heading",
+  Chapter: "Chapter",
+  Month: "month",
+  Year: "year",
+  Package_Unit: "Package_Unit",
+  No_of_Packages: "No_of_Packages",
+  Transport_Mode: "Transport_Mode",
+  ID: "ID",
 };
+
+const measurableColumns = new Set([
+  "Quantity",
+  "Net_Weight_in_KG",
+  "Gross_Weight_in_KG",
+  "Total_Value_in_USD",
+  "Heading",
+  "Chapter",
+  "Month",
+  "Year",
+  "No_of_Packages",
+  "ID",
+]);
 
 const randomRows = Array.from({ length: 120 }).map((_, i) => ({
   Date: `${String((i % 27) + 1).padStart(2, "0")} Oct 2025`,
@@ -95,15 +165,12 @@ export default function SearchConsole({
   const router = useRouter();
   const searchParams = useSearchParams();
   const countries = ["India", "USA", "China", "Germany"];
-  const currencies = ["USD", "EUR", "INR", "CNY"];
   const [country, setCountry] = useState("");
-  const [currency, setCurrency] = useState("USD");
 
   const [showCountry, setShowCountry] = useState(false);
-  const [showCurrency, setShowCurrency] = useState(false);
   const [searchType, setSearchType] = useState("hscode");
   const [tradeType, setTradeType] = useState("export");
-  const [range, setRange] = useState("3M");
+  const columns = tradeType === "export" ? exportColumns : importColumns;
   const [query, setQuery] = useState(initialSuggestionQuery);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -116,6 +183,11 @@ export default function SearchConsole({
   const [isLoading, setIsLoading] = useState(false);
   const [apiMessage, setApiMessage] = useState("");
   const [toast, setToast] = useState(null);
+  const [columnFilters, setColumnFilters] = useState({});
+  const [filterOptions, setFilterOptions] = useState({});
+  const [filterQueries, setFilterQueries] = useState({});
+  const [filterLoading, setFilterLoading] = useState(null);
+  const [filterErrors, setFilterErrors] = useState({});
   const [advancedRows, setAdvancedRows] = useState(
     SEARCH_FIELDS.map((field) => ({
       operator: "AND",
@@ -149,7 +221,6 @@ export default function SearchConsole({
           params.delete("suggestCountry");
         }
         params.set("suggestTradeType", tradeType);
-        params.set("suggestCurrency", currency);
         params.set("suggestFrom", dateRange.start);
         params.set("suggestTo", dateRange.end);
       } else {
@@ -157,7 +228,6 @@ export default function SearchConsole({
         params.delete("suggestType");
         params.delete("suggestCountry");
         params.delete("suggestTradeType");
-        params.delete("suggestCurrency");
         params.delete("suggestFrom");
         params.delete("suggestTo");
         setSuggestions([]);
@@ -175,7 +245,6 @@ export default function SearchConsole({
     return () => clearTimeout(timeout);
   }, [
     country,
-    currency,
     dateRange.end,
     dateRange.start,
     query,
@@ -221,19 +290,24 @@ export default function SearchConsole({
   }, [toast]);
 
   useEffect(() => {
-  function handleClickOutside(event) {
-    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-      setShowCountry(false);
-      setShowCurrency(false);
+    setVisibleColumns(columns);
+    setFilterColumn(null);
+    setColumnFilters({});
+  }, [columns, tradeType]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowCountry(false);
+      }
     }
-  }
 
-  document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
 
-  return () => {
-    document.removeEventListener("mousedown", handleClickOutside);
-  };
-}, []);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   function toggleColumn(col) {
     if (visibleColumns.includes(col)) {
@@ -245,22 +319,6 @@ export default function SearchConsole({
 
   function formatInputDate(date) {
     return date.toISOString().slice(0, 10);
-  }
-
-  function applyQuickRange(nextRange) {
-    const end = new Date();
-    const start = new Date(end);
-
-    if (nextRange === "1M") start.setMonth(start.getMonth() - 1);
-    if (nextRange === "3M") start.setMonth(start.getMonth() - 3);
-    if (nextRange === "6M") start.setMonth(start.getMonth() - 6);
-    if (nextRange === "1Yr") start.setFullYear(start.getFullYear() - 1);
-
-    setRange(nextRange);
-    setDateRange({
-      start: formatInputDate(start),
-      end: formatInputDate(end),
-    });
   }
 
   function updateAdvancedRow(index, key, value) {
@@ -275,10 +333,63 @@ export default function SearchConsole({
     return apiRows.map((item) =>
       columns.reduce((acc, column) => {
         const apiKey = apiColumnMap[column];
-        acc[column] = item?.[apiKey] ?? item?.[column] ?? "";
+        acc[column] =
+          item?.[apiKey] ??
+          item?.[column] ??
+          (column === "Country" ? country || "Global" : "");
         return acc;
       }, {}),
     );
+  }
+
+  function getApiField(column) {
+    return apiColumnMap[column] || column;
+  }
+
+  function getOptionLabel(option) {
+    if (option === null || option === undefined) return "";
+    if (typeof option !== "object") return String(option);
+    return String(
+      option.value ??
+        option.key ??
+        option.name ??
+        option.label ??
+        option[getApiField(filterColumn)] ??
+        "",
+    );
+  }
+
+  function getFacetValues(data, field) {
+    if (!data || typeof data !== "object") return [];
+
+    const candidates = [
+      data[field],
+      data.facets?.[field],
+      data.filters?.[field],
+      data.data?.[field],
+      data.data?.facets?.[field],
+      data.data?.filters?.[field],
+      data.result?.[field],
+      data.results?.[field],
+    ];
+
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+      if (candidate && typeof candidate === "object") {
+        return Object.entries(candidate).map(([value, count]) => ({
+          value,
+          count,
+        }));
+      }
+    }
+
+    for (const value of Object.values(data)) {
+      if (!value || typeof value !== "object") continue;
+      const nested = getFacetValues(value, field);
+      if (nested.length) return nested;
+    }
+
+    return [];
   }
 
   function getApiRows(data) {
@@ -347,11 +458,6 @@ export default function SearchConsole({
     const filters = {};
     const trimmedQuery = query.trim();
 
-    if (currency) {
-      filters.Currency_Name = currency;
-      filters.Currency_Name_mode = "exact";
-    }
-
     if (trimmedQuery) {
       if (searchType === "industry") {
         filters.Product_Description = trimmedQuery;
@@ -373,6 +479,24 @@ export default function SearchConsole({
       });
     }
 
+    Object.entries(columnFilters).forEach(([column, filter]) => {
+      const field = getApiField(column);
+      if (filter?.type === "number") {
+        if (filter.min !== "" && filter.min !== undefined) {
+          filters[`${field}_min`] = Number(filter.min);
+        }
+        if (filter.max !== "" && filter.max !== undefined) {
+          filters[`${field}_max`] = Number(filter.max);
+        }
+        return;
+      }
+
+      if (filter?.values?.length) {
+        filters[field] = filter.values.join(",");
+        filters[`${field}_mode`] = "exact";
+      }
+    });
+
     return filters;
   }
 
@@ -382,7 +506,7 @@ export default function SearchConsole({
         from: dateRange.start,
         to: dateRange.end,
       },
-      columns: Object.values(apiColumnMap),
+      columns: columns.map((column) => getApiField(column)),
       filters: buildFilters(includeAdvanced),
       sort: {
         field: "Date",
@@ -426,6 +550,112 @@ export default function SearchConsole({
     if (nextSummary) {
       setSummary(nextSummary);
     }
+  }
+
+  async function fetchColumnFilterOptions(column) {
+    if (measurableColumns.has(column) || filterOptions[column]?.length) return;
+
+    const field = getApiField(column);
+    const payload = {
+      date_range: {
+        from: dateRange.start,
+        to: dateRange.end,
+      },
+      facets: [field],
+      include_counts: true,
+      filters: buildFilters(false),
+    };
+
+    if (country) {
+      payload.Table_Name = `${country}_${tradeType === "import" ? "Import" : "Export"}`;
+    } else {
+      payload.global = true;
+    }
+
+    if (!Object.keys(payload.filters).length) {
+      delete payload.filters;
+    }
+
+    setFilterLoading(column);
+    setFilterErrors((current) => ({ ...current, [column]: "" }));
+
+    try {
+      const response = await fetch("/api/trades/filters", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to load filter values.");
+      }
+
+      setFilterOptions((current) => ({
+        ...current,
+        [column]: getFacetValues(data, field).slice(0, 200),
+      }));
+    } catch (error) {
+      setFilterErrors((current) => ({
+        ...current,
+        [column]: error.message || "Unable to load filter values.",
+      }));
+    } finally {
+      setFilterLoading(null);
+    }
+  }
+
+  function openColumnFilter(column) {
+    if (isLoading) return;
+    setFilterColumn((current) => (current === column ? null : column));
+    fetchColumnFilterOptions(column);
+  }
+
+  function updateColumnFilter(column, value) {
+    setColumnFilters((current) => {
+      const currentFilter = current[column] || {
+        type: "list",
+        values: [],
+      };
+      const values = currentFilter.values?.includes(value)
+        ? currentFilter.values.filter((item) => item !== value)
+        : [...(currentFilter.values || []), value];
+
+      if (!values.length) {
+        const { [column]: _removed, ...rest } = current;
+        return rest;
+      }
+
+      return {
+        ...current,
+        [column]: {
+          type: "list",
+          values,
+        },
+      };
+    });
+  }
+
+  function updateNumericFilter(column, key, value) {
+    setColumnFilters((current) => ({
+      ...current,
+      [column]: {
+        type: "number",
+        min: current[column]?.min ?? getNumericRange(column).min,
+        max: current[column]?.max ?? getNumericRange(column).max,
+        [key]: value,
+      },
+    }));
+  }
+
+  function clearColumnFilter(column) {
+    setColumnFilters((current) => {
+      const { [column]: _removed, ...rest } = current;
+      return rest;
+    });
+    setFilterQueries((current) => ({ ...current, [column]: "" }));
   }
 
   async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
@@ -512,6 +742,81 @@ export default function SearchConsole({
   const pageStart = totalRecords === 0 ? 0 : pageOffset + 1;
   const pageEnd = Math.min(pageOffset + rows.length, totalRecords);
 
+  function formatNumber(value, options = {}) {
+    return Number(value || 0).toLocaleString(undefined, options);
+  }
+
+  function formatUsdValue(value) {
+    const number = Number(value || 0);
+    if (Math.abs(number) >= 1_000_000) {
+      return `$${(number / 1_000_000).toLocaleString(undefined, {
+        maximumFractionDigits: 2,
+      })}M`;
+    }
+
+    return `$${number.toLocaleString(undefined, { maximumFractionDigits: 3 })}`;
+  }
+
+  function getNumericRange(column) {
+    const values = rows
+      .map((row) => Number(row[column]))
+      .filter((value) => Number.isFinite(value));
+    const min = values.length ? Math.min(...values) : 0;
+    const max = values.length ? Math.max(...values) : 100;
+
+    return {
+      min,
+      max: max > min ? max : min + 1,
+    };
+  }
+
+  function getActiveSearchChips() {
+    const chips = [
+      { label: "Scope", value: country || "Global" },
+      { label: "Trade", value: tradeType === "export" ? "Exports" : "Imports" },
+      {
+        label: "Dates",
+        value: `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`,
+      },
+    ];
+
+    if (query.trim()) {
+      chips.push({
+        label: searchType === "industry" ? "Company" : "Search",
+        value: query.trim(),
+      });
+    }
+
+    advancedRows.forEach((row) => {
+      if (!row.value.trim()) return;
+      chips.push({
+        label: row.field,
+        value: `${labelForField(row.mode)} ${row.value.trim()}`,
+      });
+    });
+
+    Object.entries(columnFilters).forEach(([column, filter]) => {
+      if (filter.type === "number") {
+        chips.push({
+          label: column,
+          value: `${formatNumber(filter.min)} - ${formatNumber(filter.max)}`,
+        });
+        return;
+      }
+
+      if (filter.values?.length) {
+        chips.push({
+          label: column,
+          value: filter.values.join(", "),
+        });
+      }
+    });
+
+    return chips;
+  }
+
+  const activeSearchChips = getActiveSearchChips();
+
   function getReportCards() {
     return [
       {
@@ -527,14 +832,9 @@ export default function SearchConsole({
       },
       {
         label: "Total Value USD",
-        value: `$${Number(
-          summary?.total_value_usd || totalShipmentValue,
-        ).toLocaleString(undefined, { maximumFractionDigits: 3 })}`,
+        value: formatUsdValue(summary?.total_value_usd || totalShipmentValue),
       },
-      {
-        label: "Scope",
-        value: country || "Global",
-      },
+      
     ];
   }
 
@@ -543,7 +843,7 @@ export default function SearchConsole({
   function renderCellContent(row, col, index) {
     const value = row[col] || "-";
 
-    if (col === "HS Code") {
+    if (col === "HS_Code") {
       return (
         <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-mono text-xs font-semibold text-blue-700 shadow-sm">
           <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.7)]"></span>
@@ -552,7 +852,7 @@ export default function SearchConsole({
       );
     }
 
-    if (col === "Product") {
+    if (col === "Product_Description" || col === "HS_Code_Description") {
       return (
         <div className="min-w-[240px]">
           <p className="font-semibold text-[#003466]">{value}</p>
@@ -563,7 +863,7 @@ export default function SearchConsole({
       );
     }
 
-    if (col === "Exporter" || col === "Importer") {
+    if (col === "Exporter_Name" || col === "Importer_Name") {
       return (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-xs font-bold text-white shadow-md">
@@ -574,7 +874,7 @@ export default function SearchConsole({
               {value}
             </p>
             <p className="text-[11px] text-slate-400">
-              {col === "Exporter" ? "Seller node" : "Buyer node"}
+              {col === "Exporter_Name" ? "Seller node" : "Buyer node"}
             </p>
           </div>
         </div>
@@ -590,9 +890,12 @@ export default function SearchConsole({
       );
     }
 
-    if (col === "Quantity" || col === "Price") {
+    if (measurableColumns.has(col)) {
       const numericValue = Number(value) || 0;
-      const maxValue = col === "Quantity" ? maxQuantity : maxPrice;
+      const maxValue = Math.max(
+        ...rows.map((row) => Number(row[col]) || 0),
+        1,
+      );
       const width = Math.max(8, Math.min(100, (numericValue / maxValue) * 100));
 
       return (
@@ -602,7 +905,7 @@ export default function SearchConsole({
               {numericValue.toLocaleString()}
             </span>
             <span className="text-[10px] uppercase text-slate-400">
-              {col === "Quantity" ? "Units" : currency}
+              {col.includes("Value") ? "USD" : "Units"}
             </span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-blue-100">
@@ -615,26 +918,9 @@ export default function SearchConsole({
       );
     }
 
-    if (col === "Currency") {
-      return (
-        <span className="rounded-md bg-blue-950 px-2.5 py-1 font-mono text-xs font-semibold text-cyan-100">
-          {value}
-        </span>
-      );
-    }
-
-    if (col === "Shipment Mode") {
+    if (col === "Transport_Mode") {
       return (
         <span className="inline-flex items-center rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 ring-1 ring-cyan-100">
-          {value}
-        </span>
-      );
-    }
-
-    if (col === "Trade Type") {
-      return (
-        <span className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-blue-800 px-3 py-1 text-xs font-semibold text-white shadow-sm">
-          <ArrowRight size={12} />
           {value}
         </span>
       );
@@ -669,6 +955,15 @@ export default function SearchConsole({
         )}
       </AnimatePresence>
 
+      {isLoading && (
+        <div className="fixed inset-0 z-[9000] flex cursor-wait items-center justify-center bg-white/45 backdrop-blur-[2px]">
+          <div className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-white px-5 py-4 text-sm font-bold text-[#003466] shadow-2xl">
+            <RefreshCw size={18} className="animate-spin text-blue-700" />
+            Loading trade data
+          </div>
+        </div>
+      )}
+
       {/* ================= TOP CONTROL BAR ================= */}
 
       <div className="max-w-full mx-auto mb-8 space-y-6">
@@ -694,7 +989,7 @@ export default function SearchConsole({
             <div className="grid grid-cols-3 overflow-hidden rounded-2xl border border-blue-100 bg-blue-50/70 p-1 text-sm font-semibold shadow-inner">
               {[
                 { id: "hscode", label: "HS / Product" },
-                { id: "industry", label: "Industry" },
+                { id: "industry", label: "Company" },
               ].map((item) => (
                 <button
                   key={item.id}
@@ -718,7 +1013,7 @@ export default function SearchConsole({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 xl:grid-cols-[auto_auto_minmax(360px,1fr)] xl:items-center">
+          <div className="mt-5 grid gap-3 xl:grid-cols-[auto_auto_auto_auto_minmax(360px,1fr)] xl:items-center">
             <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
               {[
                 { id: "import", label: "Imports" },
@@ -727,6 +1022,7 @@ export default function SearchConsole({
                 <button
                   key={item.id}
                   onClick={() => setTradeType(item.id)}
+                  disabled={isLoading}
                   className={`rounded-xl px-5 py-3 text-sm font-bold transition ${
                     tradeType === item.id
                       ? "bg-white text-[#031c35] shadow-sm"
@@ -738,72 +1034,106 @@ export default function SearchConsole({
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Date Window
-                </p>
-                <p className="mt-1 text-sm font-bold text-[#003466]">
-                  {formatDate(dateRange.start)} - {formatDate(dateRange.end)}
-                </p>
-              </div>
+            <div ref={dropdownRef} className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowCountry((prev) => !prev);
+                }}
+                disabled={isLoading}
+                className="flex h-14 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 text-sm shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                <span className="font-bold text-[#003466]">{country || "Global"}</span>
+                <ChevronDown
+                  size={16}
+                  className={`transition ${showCountry ? "rotate-180 text-black" : "text-gray-400"}`}
+                />
+              </button>
 
-              <div className="flex items-center gap-1 rounded-2xl border border-blue-100 bg-white p-1 shadow-sm">
-                {["1M", "3M", "6M", "1Yr"].map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => applyQuickRange(r)}
-                    className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
-                      range === r
-                        ? "bg-blue-600 text-white shadow"
-                        : "text-slate-500 hover:bg-blue-50 hover:text-blue-700"
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
+              {showCountry && (
+                <div className="absolute top-16 left-0 z-[9999] w-48 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-3">
+                    <span className="text-xs font-bold text-[#003466]">Country</span>
+                    <button
+                      onClick={() => setShowCountry(false)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-500 hover:text-blue-700"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {["", ...countries].map((c) => (
+                    <button
+                      key={c || "global"}
+                      onClick={() => {
+                        setCountry(c);
+                        setShowCountry(false);
+                      }}
+                      className="block w-full px-4 py-3 text-left text-sm font-semibold transition hover:bg-blue-50"
+                    >
+                      {c || "Global"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
               <div className="relative">
                 <button
                   onClick={() => setShowCalendar(!showCalendar)}
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50"
+                  disabled={isLoading}
+                  className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
                 >
                   <Calendar size={18} />
                 </button>
 
                 {showCalendar && (
-                  <div className="absolute top-14 right-0 z-50 flex gap-2 rounded-2xl border border-blue-100 bg-white p-3 shadow-2xl">
-                    <input
-                      type="date"
-                      value={dateRange.start}
-                      onChange={(e) =>
-                        setDateRange((prev) => ({
-                          ...prev,
-                          start: e.target.value,
-                        }))
-                      }
-                      className="rounded-xl border border-blue-100 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                    />
+                  <div className="absolute top-16 left-0 z-[9999] w-[330px] rounded-2xl border border-blue-100 bg-white p-3 shadow-2xl">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#003466]">Select date range</span>
+                      <button
+                        onClick={() => setShowCalendar(false)}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-slate-500 hover:text-blue-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={dateRange.start}
+                        onChange={(e) =>
+                          setDateRange((prev) => ({
+                            ...prev,
+                            start: e.target.value,
+                          }))
+                        }
+                        className="rounded-xl border border-blue-100 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                      />
 
-                    <input
-                      type="date"
-                      value={dateRange.end}
-                      onChange={(e) =>
-                        setDateRange((prev) => ({
-                          ...prev,
-                          end: e.target.value,
-                        }))
-                      }
-                      className="rounded-xl border border-blue-100 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                    />
+                      <input
+                        type="date"
+                        value={dateRange.end}
+                        onChange={(e) =>
+                          setDateRange((prev) => ({
+                            ...prev,
+                            end: e.target.value,
+                          }))
+                        }
+                        className="rounded-xl border border-blue-100 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
 
-              <button className="flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50">
-                <Lightbulb size={18} />
-              </button>
+            <div className="h-14 rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                Date Window
+              </p>
+              <p className="mt-1 text-sm font-bold text-[#003466]">
+                {formatDate(dateRange.start)} - {formatDate(dateRange.end)}
+              </p>
             </div>
 
             <div ref={searchBoxRef} className="relative xl:justify-self-end xl:w-full xl:max-w-3xl">
@@ -825,10 +1155,11 @@ export default function SearchConsole({
                   onKeyDown={(event) => {
                     if (event.key === "Enter") handleSearch(false, 0, pageSize);
                   }}
+                  disabled={isLoading}
                   placeholder={
                     searchType === "industry"
-                      ? "Ask for an industry, market, or sector"
-                      : "Search HS code, product, importer, exporter..."
+                      ? "Search company, importer, or exporter"
+                      : "Search HS code, product ..."
                   }
                   className="min-w-0 flex-1 bg-transparent text-base font-semibold text-[#003466] outline-none placeholder:text-slate-400"
                 />
@@ -844,6 +1175,15 @@ export default function SearchConsole({
 
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute top-[72px] left-16 right-4 z-[9999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-2">
+                    <span className="text-xs font-bold text-[#003466]">Suggestions</span>
+                    <button
+                      onClick={() => setShowSuggestions(false)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-500 hover:text-blue-700"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                   {suggestions.map((item, i) => (
                     <button
                       key={i}
@@ -887,6 +1227,27 @@ export default function SearchConsole({
             Data Sheet
           </div>
         </div>
+        <div className="relative z-10 rounded-2xl border border-white/80 bg-white/80 px-4 py-3 shadow-[0_16px_45px_rgba(0,52,102,0.08)] backdrop-blur-xl">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+              Current Search
+            </p>
+            <span className="text-xs font-semibold text-slate-500">
+              {activeSearchChips.length} active items
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {activeSearchChips.map((chip) => (
+              <span
+                key={`${chip.label}-${chip.value}`}
+                className="inline-flex max-w-full items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#003466]"
+              >
+                <span className="text-blue-600">{chip.label}</span>
+                <span className="max-w-[260px] truncate">{chip.value}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* COLUMN SELECTOR */}
@@ -914,6 +1275,7 @@ export default function SearchConsole({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setVisibleColumns(columns)}
+                    disabled={isLoading}
                     className="text-xs px-3 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
                   >
                     Select All
@@ -921,9 +1283,16 @@ export default function SearchConsole({
 
                   <button
                     onClick={() => setVisibleColumns([])}
+                    disabled={isLoading}
                     className="text-xs px-3 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
                   >
                     Clear
+                  </button>
+                  <button
+                    onClick={() => setShowColumnSelector(false)}
+                    className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-slate-500 ring-1 ring-blue-100 hover:text-blue-700"
+                  >
+                    <X size={14} />
                   </button>
                 </div>
               </div>
@@ -965,88 +1334,11 @@ export default function SearchConsole({
 
       <div className="w-full flex flex-wrap justify-between items-center mb-6 gap-4 relative z-10">
         {/* LEFT SIDE */}
-        <div ref={dropdownRef} className="flex flex-wrap items-center gap-3 rounded-[24px] border border-white/80 bg-white/80 px-3 py-2 shadow-[0_18px_55px_rgba(0,52,102,0.12)] backdrop-blur-2xl">
-          {/* COUNTRY */}
-          {/* COUNTRY DROPDOWN */}
-          <div className="relative">
-            <button
-              onClick={(e) => {
-  e.stopPropagation();
-  setShowCountry((prev) => !prev);
-  setShowCurrency(false);
-}}
-              className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-gradient-to-b from-white to-blue-50/60 px-4 py-3 text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
-              <span className="font-bold text-[#003466]">{country || "Global"}</span>
-
-              <ChevronDown
-                size={16}
-                className={`transition ${showCountry ? "rotate-180 text-black" : "text-gray-400"}`}
-              />
-            </button>
-
-            {showCountry && (
-              <div className="absolute top-14 left-0 w-44 bg-white border border-blue-100 rounded-2xl shadow-2xl overflow-hidden z-50">
-                {["", ...countries].map((c) => (
-                  <div
-                    key={c || "global"}
-                    onClick={() => {
-                      setCountry(c);
-                      setShowCountry(false);
-                    }}
-                    className="px-4 py-3 text-sm font-semibold cursor-pointer hover:bg-blue-50 transition"
-                  >
-                    {c || "Global"}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* CURRENCY DROPDOWN */}
-          <div className="relative">
-            <button
-              onClick={(e) => {
-  e.stopPropagation();
-  setShowCurrency((prev) => !prev);
-  setShowCountry(false);
-}}
-              className="flex items-center gap-3 rounded-2xl border border-blue-100 bg-gradient-to-b from-white to-blue-50/60 px-4 py-3 text-sm shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <span className="font-mono text-xs font-black text-cyan-600">$</span>
-              <span className="font-bold text-[#003466]">{currency}</span>
-
-              <ChevronDown
-                size={16}
-                className={`transition ${showCurrency ? "rotate-180 text-black" : "text-gray-400"}`}
-              />
-            </button>
-
-            {showCurrency && (
-              <div className="absolute top-14 left-0 w-36 bg-white border border-blue-100 rounded-2xl shadow-2xl overflow-hidden z-50">
-                {currencies.map((c) => (
-                  <div
-                    key={c}
-                    onClick={() => {
-                      setCurrency(c);
-                      setShowCurrency(false);
-                    }}
-                    className="px-4 py-3 text-sm font-semibold cursor-pointer hover:bg-blue-50 transition"
-                  >
-                    {c}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* DIVIDER */}
-          <div className="h-8 w-px bg-blue-100"></div>
-
+        <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-white/80 bg-white/80 px-3 py-2 shadow-[0_18px_55px_rgba(0,52,102,0.12)] backdrop-blur-2xl">
           {/* COLUMNS */}
           <button
             onClick={() => setShowColumnSelector(!showColumnSelector)}
+            disabled={isLoading}
             className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md"
           >
             <SlidersHorizontal size={16} />
@@ -1054,7 +1346,10 @@ export default function SearchConsole({
           </button>
 
           {/* SAVE TABLE */}
-          <button className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md">
+          <button
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+          >
             <Save size={16} />
             Save Table
           </button>
@@ -1063,7 +1358,10 @@ export default function SearchConsole({
         {/* RIGHT SIDE */}
         <div className="flex items-center gap-3">
           {/* DOWNLOAD */}
-          <button className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/20 transition hover:scale-[1.02]">
+          <button
+            disabled={isLoading}
+            className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/20 transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-60"
+          >
             <Download size={16} />
             Download
           </button>
@@ -1071,6 +1369,7 @@ export default function SearchConsole({
           {/* FULLSCREEN */}
           <button
             onClick={() => setFullscreen(!fullscreen)}
+            disabled={isLoading}
             className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-5 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md"
           >
             <Expand size={16} />
@@ -1106,7 +1405,7 @@ export default function SearchConsole({
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {country ? `${country} ${tradeType}` : "Global"} data · {currency} · {formatDate(dateRange.start)} to {formatDate(dateRange.end)}
+                  {country ? `${country} ${tradeType}` : "Global"} data · {formatDate(dateRange.start)} to {formatDate(dateRange.end)}
                 </p>
               </div>
             </div>
@@ -1147,7 +1446,7 @@ export default function SearchConsole({
                     >
                       {/* COLUMN HEADER */}
                       <div
-                        onClick={() => setFilterColumn(col)}
+                        onClick={() => openColumnFilter(col)}
                         className={`flex min-h-14 items-center justify-between gap-4 cursor-pointer rounded-2xl border border-transparent px-3 py-2 transition-all
             hover:border-blue-100 hover:bg-blue-50/70 hover:shadow-sm`}
                       >
@@ -1206,45 +1505,153 @@ export default function SearchConsole({
                                 </p>
                               </div>
 
-                              <div className="w-8 h-8 flex items-center justify-center rounded-md bg-blue-600 text-white shadow">
-                                <Filter size={14} />
-                              </div>
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setFilterColumn(null);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-slate-500 shadow ring-1 ring-blue-100 hover:text-blue-700"
+                              >
+                                <X size={14} />
+                              </button>
                             </div>
                           </div>
 
-                          {/* SEARCH */}
-                          <div className="p-4 border-b bg-blue-50/40">
-                            <input
-                              placeholder={`Search ${col}`}
-                              className="w-full text-sm px-3 py-2 rounded-md border border-blue-200 focus:ring-2 focus:ring-blue-400 outline-none"
-                            />
-                          </div>
+                          {measurableColumns.has(col) ? (
+                            <div className="p-4">
+                              {(() => {
+                                const range = getNumericRange(col);
+                                const current = columnFilters[col] || {
+                                  type: "number",
+                                  min: range.min,
+                                  max: range.max,
+                                };
 
-                          {/* VALUES */}
-                          <div className="max-h-[200px] overflow-auto p-3 space-y-1 text-sm">
-                            <label className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 cursor-pointer">
-                              <input type="checkbox" />
-                              <span>Example 1</span>
-                            </label>
+                                return (
+                                  <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Min
+                                        <input
+                                          type="number"
+                                          value={current.min}
+                                          onChange={(event) =>
+                                            updateNumericFilter(col, "min", event.target.value)
+                                          }
+                                          className="mt-2 w-full rounded-xl border border-blue-100 px-3 py-2 text-sm font-semibold text-[#003466] outline-none focus:ring-2 focus:ring-blue-400"
+                                        />
+                                      </label>
+                                      <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Max
+                                        <input
+                                          type="number"
+                                          value={current.max}
+                                          onChange={(event) =>
+                                            updateNumericFilter(col, "max", event.target.value)
+                                          }
+                                          className="mt-2 w-full rounded-xl border border-blue-100 px-3 py-2 text-sm font-semibold text-[#003466] outline-none focus:ring-2 focus:ring-blue-400"
+                                        />
+                                      </label>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min={range.min}
+                                      max={range.max}
+                                      value={current.max}
+                                      onChange={(event) =>
+                                        updateNumericFilter(col, "max", event.target.value)
+                                      }
+                                      className="w-full accent-blue-600"
+                                    />
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="p-4 border-b bg-blue-50/40">
+                                <input
+                                  value={filterQueries[col] || ""}
+                                  onChange={(event) =>
+                                    setFilterQueries((current) => ({
+                                      ...current,
+                                      [col]: event.target.value,
+                                    }))
+                                  }
+                                  placeholder={`Search ${col}`}
+                                  className="w-full text-sm px-3 py-2 rounded-md border border-blue-200 focus:ring-2 focus:ring-blue-400 outline-none"
+                                />
+                              </div>
 
-                            <label className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 cursor-pointer">
-                              <input type="checkbox" />
-                              <span>Example 2</span>
-                            </label>
+                              <div className="max-h-[220px] overflow-auto p-3 space-y-1 text-sm">
+                                {filterLoading === col && (
+                                  <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-3 text-xs font-semibold text-blue-700">
+                                    <RefreshCw size={14} className="animate-spin" />
+                                    Loading options
+                                  </div>
+                                )}
+                                {filterErrors[col] && (
+                                  <div className="rounded-xl bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-800">
+                                    {filterErrors[col]}
+                                  </div>
+                                )}
+                                {(filterOptions[col] || [])
+                                  .filter((option) =>
+                                    getOptionLabel(option)
+                                      .toLowerCase()
+                                      .includes((filterQueries[col] || "").toLowerCase()),
+                                  )
+                                  .map((option) => {
+                                    const optionLabel = getOptionLabel(option);
+                                    const checked = columnFilters[col]?.values?.includes(optionLabel);
 
-                            <label className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 cursor-pointer">
-                              <input type="checkbox" />
-                              <span>Example 3</span>
-                            </label>
-                          </div>
+                                    return (
+                                      <label
+                                        key={optionLabel}
+                                        className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 cursor-pointer"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={Boolean(checked)}
+                                          onChange={() => updateColumnFilter(col, optionLabel)}
+                                        />
+                                        <span className="min-w-0 flex-1 truncate">{optionLabel}</span>
+                                        {option?.count !== undefined && (
+                                          <span className="text-[10px] font-semibold text-slate-400">
+                                            {Number(option.count).toLocaleString()}
+                                          </span>
+                                        )}
+                                      </label>
+                                    );
+                                  })}
+                                {filterLoading !== col &&
+                                  !filterErrors[col] &&
+                                  !(filterOptions[col] || []).length && (
+                                    <div className="rounded-xl bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-500">
+                                      No options loaded yet.
+                                    </div>
+                                  )}
+                              </div>
+                            </>
+                          )}
 
                           {/* FOOTER */}
                           <div className="flex justify-between items-center p-3 border-t bg-blue-50">
-                            <button className="text-xs text-gray-600 hover:text-blue-700 font-medium">
+                            <button
+                              onClick={() => clearColumnFilter(col)}
+                              className="text-xs text-gray-600 hover:text-blue-700 font-medium"
+                            >
                               Clear
                             </button>
 
-                            <button className="text-xs px-4 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 shadow">
+                            <button
+                              onClick={() => {
+                                setFilterColumn(null);
+                                handleSearch(lastIncludeAdvanced, 0, pageSize);
+                              }}
+                              disabled={isLoading}
+                              className="text-xs px-4 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 shadow disabled:cursor-wait disabled:opacity-60"
+                            >
                               Apply Filter
                             </button>
                           </div>
@@ -1401,7 +1808,7 @@ export default function SearchConsole({
               transition={{ duration: 0.3 }}
               className="max-h-[86vh] w-[92%] overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_28px_90px_rgba(0,35,70,0.26)] sm:w-[860px]"
             >
-              <div className="flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5 sm:px-8">
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5 sm:px-8">
                 <div className="flex items-center gap-4">
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#031c35] text-cyan-200 shadow-lg shadow-blue-950/20">
                     <SlidersHorizontal size={20} />
@@ -1415,48 +1822,28 @@ export default function SearchConsole({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowAdvance(false)}
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-100 bg-white text-slate-500 shadow-sm transition hover:bg-blue-50 hover:text-blue-700"
-                >
-                  <X size={20} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setShowAdvance(false);
+                      handleSearch(true);
+                    }}
+                    disabled={isLoading}
+                    className="inline-flex h-10 items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isLoading && <RefreshCw size={15} className="animate-spin" />}
+                    {isLoading ? "Loading" : "Search"}
+                  </button>
+                  <button
+                    onClick={() => setShowAdvance(false)}
+                    className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-100 bg-white text-slate-500 shadow-sm transition hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
               </div>
 
-              <div className="max-h-[calc(86vh-90px)] overflow-auto px-6 py-6 sm:px-8">
-                <div className="mb-6 grid grid-cols-1 gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-3 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">
-                      Scope
-                    </span>
-                    <select
-                      value={country}
-                      onChange={(event) => setCountry(event.target.value)}
-                      className="h-12 w-full rounded-xl border border-blue-100 bg-white px-4 text-sm font-bold text-[#003466] outline-none transition focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="">Global</option>
-                      {countries.map((item) => (
-                        <option key={item} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">
-                      Trade Type
-                    </span>
-                    <select
-                      value={tradeType}
-                      onChange={(event) => setTradeType(event.target.value)}
-                      className="h-12 w-full rounded-xl border border-blue-100 bg-white px-4 text-sm font-bold text-[#003466] outline-none transition focus:ring-2 focus:ring-blue-400"
-                    >
-                      <option value="import">Import</option>
-                      <option value="export">Export</option>
-                    </select>
-                  </label>
-                </div>
-
+              <div className="max-h-[calc(86vh-170px)] overflow-auto px-6 py-6 sm:px-8">
                 <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
                   <div className="hidden grid-cols-[92px_1.25fr_150px_1.3fr] gap-3 border-b border-blue-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 sm:grid">
                     <span>Logic</span>
@@ -1527,7 +1914,7 @@ export default function SearchConsole({
                   className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-60"
                 >
                   {isLoading && <RefreshCw size={16} className="animate-spin" />}
-                  {isLoading ? "Loading" : "Search Now"}
+                  {isLoading ? "Loading" : "Search"}
                 </button>
               </div>
             </motion.div>
