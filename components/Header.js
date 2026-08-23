@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Home,
   Briefcase,
@@ -12,8 +13,9 @@ import {
   Search,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const tabs = [
   { name: "Home", icon: Home, href: "/" },
@@ -25,8 +27,47 @@ const tabs = [
 ];
 
 export default function Header() {
-  const [username] = useState("Madhav Kumar");
+  const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [usage, setUsage] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const loadUser = useCallback(async () => {
+    if (pathname === "/login") return;
+    await fetch("/api/user/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.user) setUser(data.user);
+        if (data?.usage) setUsage(data.usage);
+      })
+      .catch(() => {});
+  }, [pathname]);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  useEffect(() => {
+    function refreshUsage() {
+      loadUser();
+    }
+
+    window.addEventListener("console-usage-updated", refreshUsage);
+    window.addEventListener("focus", refreshUsage);
+
+    return () => {
+      window.removeEventListener("console-usage-updated", refreshUsage);
+      window.removeEventListener("focus", refreshUsage);
+    };
+  }, [loadUser]);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+  }
+
+  if (pathname === "/login") return null;
 
   return (
     <header className="w-full bg-[#00264d] text-white shadow-lg z-50 relative">
@@ -42,7 +83,7 @@ export default function Header() {
             <User size={22} />
             <div className="hidden sm:block">
               <p className="text-xs opacity-70 leading-tight">Hello,</p>
-              <p className="font-semibold text-sm">{username}</p>
+              <p className="font-semibold text-sm">{user?.name || "Console User"}</p>
             </div>
           </div>
         </motion.div>
@@ -74,13 +115,24 @@ export default function Header() {
           <div className="hidden sm:flex items-center gap-3 text-xs sm:text-sm">
             <div className="flex items-center gap-1 sm:gap-2">
               <Download size={16} className="text-blue-300" />
-              <span className="opacity-80">16 / 1000</span>
+              <span className="opacity-80">
+                {usage ? `${usage.downloads.used} / ${usage.downloads.total}` : "0 / 0"}
+              </span>
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
               <Search size={16} className="text-blue-300" />
-              <span className="opacity-80">10 / 1000</span>
+              <span className="opacity-80">
+                {usage ? `${usage.search.used} / ${usage.search.total}` : "0 / 0"}
+              </span>
             </div>
           </div>
+          <button
+            onClick={logout}
+            className="hidden sm:flex h-9 w-9 items-center justify-center rounded-md hover:bg-blue-900/30 transition"
+            title="Logout"
+          >
+            <LogOut size={18} />
+          </button>
 
           {/* Mobile Menu Toggle */}
           <button
@@ -118,13 +170,20 @@ export default function Header() {
             <div className="flex justify-around mt-4 border-t border-white/10 pt-4 text-xs">
               <div className="flex items-center gap-1">
                 <Download size={14} className="text-blue-300" />
-                <span>16 / 1000</span>
+                <span>{usage ? `${usage.downloads.used} / ${usage.downloads.total}` : "0 / 0"}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Search size={14} className="text-blue-300" />
-                <span>10 / 1000</span>
+                <span>{usage ? `${usage.search.used} / ${usage.search.total}` : "0 / 0"}</span>
               </div>
             </div>
+            <button
+              onClick={logout}
+              className="flex items-center gap-3 py-2 rounded-md hover:bg-white/10 transition-all"
+            >
+              <LogOut size={18} className="text-blue-300" />
+              <span>Logout</span>
+            </button>
           </motion.nav>
         )}
       </AnimatePresence>

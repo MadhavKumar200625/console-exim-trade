@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Download, Search, ArrowUpDown } from "lucide-react";
 
@@ -9,58 +9,22 @@ export default function MyDownloadsPage() {
   const [sortOrder, setSortOrder] = useState("desc");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [downloads, setDownloads] = useState([]);
+  const [usage, setUsage] = useState({
+    downloads: { used: 0, total: 0 },
+  });
   const perPage = 5;
 
-  const downloads = [
-    {
-      id: 1,
-      dataType: "India Import Summary",
-      downloadDate: "2025-11-02",
-      category: "Import",
-      records: 420,
-      usedPoints: 12,
-    },
-    {
-      id: 2,
-      dataType: "USA Export Highlights",
-      downloadDate: "2025-10-30",
-      category: "Export",
-      records: 180,
-      usedPoints: 6,
-    },
-    {
-      id: 3,
-      dataType: "China Monthly Data",
-      downloadDate: "2025-10-27",
-      category: "Import",
-      records: 520,
-      usedPoints: 20,
-    },
-    {
-      id: 4,
-      dataType: "UAE Gold Trade",
-      downloadDate: "2025-10-20",
-      category: "Export",
-      records: 75,
-      usedPoints: 3,
-    },
-    {
-      id: 5,
-      dataType: "Africa Market Insights",
-      downloadDate: "2025-09-30",
-      category: "Import",
-      records: 310,
-      usedPoints: 10,
-    },
-    {
-      id: 6,
-      dataType: "Europe Trade Flow",
-      downloadDate: "2025-09-15",
-      category: "Export",
-      records: 290,
-      usedPoints: 9,
-    },
-  ];
+  useEffect(() => {
+    fetch("/api/user/downloads")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setDownloads(data.downloads || []);
+        setUsage(data.usage || { downloads: { used: 0, total: 0 } });
+      })
+      .catch(() => {});
+  }, []);
 
   const filteredData = useMemo(() => {
     const lowerSearch = search.toLowerCase();
@@ -78,7 +42,7 @@ export default function MyDownloadsPage() {
       });
   }, [downloads, sortField, sortOrder, search]);
 
-  const totalPages = Math.ceil(filteredData.length / perPage);
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / perPage));
   const visibleData = filteredData.slice((page - 1) * perPage, page * perPage);
 
   const toggleSort = (field) => {
@@ -127,7 +91,9 @@ export default function MyDownloadsPage() {
             <p className="text-gray-600 text-sm">You currently have</p>
           </div>
         </div>
-        <div className="text-3xl font-bold text-[#007bff]">984 / 1000</div>
+        <div className="text-3xl font-bold text-[#007bff]">
+          {Math.max(0, usage.downloads.total - usage.downloads.used)} / {usage.downloads.total}
+        </div>
       </motion.div>
 
       {/* SEARCH BAR */}

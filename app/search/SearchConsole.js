@@ -181,6 +181,8 @@ export default function SearchConsole({
   const [rows, setRows] = useState(randomRows.slice(0, 25));
   const [summary, setSummary] = useState(defaultGlobalSummary);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [apiMessage, setApiMessage] = useState("");
   const [toast, setToast] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
@@ -454,6 +456,80 @@ export default function SearchConsole({
     });
   }
 
+  function notifyUsageChanged() {
+    window.dispatchEvent(new Event("console-usage-updated"));
+  }
+
+  function rowsToCsv() {
+    const headers = visibleColumns;
+    const escapeCell = (value) => {
+      const text = String(value ?? "");
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+
+    return [
+      headers.map(escapeCell).join(","),
+      ...rows.map((row) => headers.map((column) => escapeCell(row[column])).join(",")),
+    ].join("\n");
+  }
+
+  async function handleSaveTable() {
+    setIsSaving(true);
+    try {
+      const payload = {
+        ...buildSearchPayload(lastIncludeAdvanced, pageOffset, pageSize),
+        name: query.trim() || `${country || "Global"} ${tradeType} table`,
+      };
+      const response = await fetch("/api/user/workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to save table.");
+      showTableToast(data.saved ? "Table saved to workspace." : "SQL is not configured yet.");
+    } catch (error) {
+      showTableToast(error.message || "Unable to save table.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleDownload() {
+    setIsDownloading(true);
+    try {
+      const payload = {
+        ...buildSearchPayload(lastIncludeAdvanced, pageOffset, pageSize),
+        category: "Data",
+        fileName: `${country || "global"}-${tradeType}-search`,
+        count: rows.length,
+      };
+      const response = await fetch("/api/user/downloads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to log download.");
+
+      const blob = new Blob([rowsToCsv()], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${payload.fileName}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      notifyUsageChanged();
+      showTableToast(data.downloaded ? "Download logged and CSV created." : "CSV created. SQL is not configured yet.");
+    } catch (error) {
+      showTableToast(error.message || "Unable to download table.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }
+
   function buildFilters(includeAdvanced = true) {
     const filters = {};
     const trimmedQuery = query.trim();
@@ -700,6 +776,7 @@ export default function SearchConsole({
         setRows(normalizeApiRows(apiRows));
         setTotalRecords(Number(getApiTotal(data, nextOffset + apiRows.length)));
         setApiMessage("");
+        notifyUsageChanged();
         showTableToast(`Table updated with ${apiRows.length.toLocaleString()} records.`);
       } else {
         setRows(getDemoPage(nextOffset, nextLimit));
@@ -707,6 +784,7 @@ export default function SearchConsole({
         setApiMessage((current) =>
           current || "No API rows returned. Showing demo data.",
         );
+        notifyUsageChanged();
         showTableToast("Table updated with demo data.");
       }
     } catch (error) {
@@ -1347,11 +1425,12 @@ export default function SearchConsole({
 
           {/* SAVE TABLE */}
           <button
-            disabled={isLoading}
+            onClick={handleSaveTable}
+            disabled={isLoading || isSaving}
             className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
           >
-            <Save size={16} />
-            Save Table
+            {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+            {isSaving ? "Saving" : "Save Table"}
           </button>
         </div>
 
@@ -1359,11 +1438,12 @@ export default function SearchConsole({
         <div className="flex items-center gap-3">
           {/* DOWNLOAD */}
           <button
-            disabled={isLoading}
+            onClick={handleDownload}
+            disabled={isLoading || isDownloading}
             className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/20 transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-60"
           >
-            <Download size={16} />
-            Download
+            {isDownloading ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+            {isDownloading ? "Downloading" : "Download"}
           </button>
 
           {/* FULLSCREEN */}

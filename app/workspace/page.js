@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Calendar,
   FileText,
@@ -13,59 +14,79 @@ import {
   X,
 } from "lucide-react";
 
+function parseFields(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [String(value)];
+  } catch {
+    return String(value).split(",").map((field) => field.trim()).filter(Boolean);
+  }
+}
+
 export default function WorkspacePage() {
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [showComments, setShowComments] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
   const perPage = 4;
 
-  const [workspaces, setWorkspaces] = useState([
-    {
-      id: 1,
-      name: "India Import Q1 Favorites",
-      startDate: "2025-01-05",
-      endDate: "2025-03-31",
-      fields: ["HS Code", "Product Description", "Quantity", "Port", "Value"],
-      comments: [
-        "Need to check data for Mumbai port.",
-        "Add price column for next update.",
-      ],
-    },
-    {
-      id: 2,
-      name: "Top 50 USA Export Goods",
-      startDate: "2025-02-10",
-      endDate: "2025-05-20",
-      fields: ["Exporter", "Importer", "Weight", "Origin", "Destination"],
-      comments: ["Update export range for electronics.", "Verified HS codes ✅"],
-    },
-    {
-      id: 3,
-      name: "China Import Trend Insights",
-      startDate: "2025-04-01",
-      endDate: "2025-06-30",
-      fields: ["Product", "Port Name", "Date", "Unit", "Amount"],
-      comments: ["Cross-check commodity values from April."],
-    },
-    {
-      id: 4,
-      name: "Europe Trade Snapshot",
-      startDate: "2025-07-01",
-      endDate: "2025-09-30",
-      fields: ["Country", "Supplier", "Commodity", "HS Code"],
-      comments: [],
-    },
-  ]);
+  const [workspaces, setWorkspaces] = useState([]);
 
-  const totalPages = Math.ceil(workspaces.length / perPage);
+  useEffect(() => {
+    fetch("/api/user/workspace")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        const next = (data?.workspaces || []).map((item) => ({
+          ...item,
+          fields: parseFields(item.fields),
+          comments: item.comment ? [item.comment] : [],
+        }));
+        setWorkspaces(next);
+      })
+      .catch(() => {});
+  }, []);
+
+  const totalPages = Math.max(1, Math.ceil(workspaces.length / perPage));
   const visibleData = workspaces.slice((page - 1) * perPage, page * perPage);
 
   const handleDelete = (id) => {
     setWorkspaces((prev) => prev.filter((w) => w.id !== id));
     setConfirmDelete(null);
   };
+
+  function openDetails(workspace) {
+    setSelectedWorkspace(workspace);
+    setShowDetails(true);
+  }
+
+  function openWorkspace(workspace) {
+    const params = new URLSearchParams();
+    const comment = workspace.comments?.[0] || "";
+
+    try {
+      const filters = JSON.parse(comment);
+      const query =
+        filters.HS_Code ||
+        filters.Product_Description ||
+        filters.Importer_Name ||
+        filters.Exporter_Name ||
+        workspace.name;
+      params.set("suggestQuery", query);
+      params.set("suggestType", filters.HS_Code ? "hscode" : "industry");
+    } catch {
+      params.set("suggestQuery", workspace.name || "");
+      params.set("suggestType", "industry");
+    }
+
+    if (workspace.startDate) params.set("suggestFrom", workspace.startDate);
+    if (workspace.endDate) params.set("suggestTo", workspace.endDate);
+
+    router.push(`/search?${params.toString()}`);
+  }
 
   return (
     <div className="min-h-screen bg-linear-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 md:px-10 py-8 md:py-10 text-[#003466] relative overflow-hidden">
@@ -92,6 +113,11 @@ export default function WorkspacePage() {
 
       {/* WORKSPACE CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8  mx-auto">
+        {visibleData.length === 0 && (
+          <div className="col-span-full rounded-2xl border border-white/70 bg-white/80 p-10 text-center text-sm font-semibold text-gray-500 shadow-lg">
+            No saved tables found.
+          </div>
+        )}
         {visibleData.map((ws, index) => (
           <motion.div
             key={ws.id}
@@ -152,10 +178,14 @@ export default function WorkspacePage() {
 
             {/* Footer / Action */}
             <div className="flex justify-between items-center mt-auto pt-3 border-t border-gray-200 flex-wrap gap-3">
-              <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-700 cursor-pointer hover:text-blue-900">
+              <button
+                onClick={() => openDetails(ws)}
+                className="flex items-center gap-2 text-xs sm:text-sm text-blue-700 cursor-pointer hover:text-blue-900"
+              >
                 <FileText size={14} /> View Details
-              </div>
+              </button>
               <motion.button
+                onClick={() => openWorkspace(ws)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.97 }}
                 className="px-3 sm:px-4 py-2 text-xs sm:text-sm bg-linear-to-r from-blue-500 to-blue-700 text-white rounded-full shadow-md hover:shadow-lg"
@@ -241,6 +271,71 @@ export default function WorkspacePage() {
               ) : (
                 <p className="text-gray-500 text-sm">No comments yet.</p>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* DETAILS MODAL */}
+      <AnimatePresence>
+        {showDetails && selectedWorkspace && (
+          <motion.div
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-2xl overflow-y-auto max-h-[80vh]"
+            >
+              <div className="flex justify-between items-start gap-4 mb-5">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-semibold text-[#003466]">
+                    {selectedWorkspace.name}
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {selectedWorkspace.startDate || "-"} to {selectedWorkspace.endDate || "-"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowDetails(false)}
+                  className="text-gray-500 hover:text-blue-600 transition"
+                >
+                  <X size={22} />
+                </button>
+              </div>
+
+              <div className="mb-5">
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Saved Columns
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedWorkspace.fields.length ? (
+                    selectedWorkspace.fields.map((field) => (
+                      <span
+                        key={field}
+                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700"
+                      >
+                        {field}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-gray-500">No columns saved.</span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Saved Filters
+                </p>
+                <pre className="max-h-60 overflow-auto rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-xs text-slate-700">
+                  {selectedWorkspace.comments?.[0] || "No filters saved."}
+                </pre>
+              </div>
             </motion.div>
           </motion.div>
         )}

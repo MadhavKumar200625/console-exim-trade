@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpDown, Globe2, Search } from "lucide-react";
 
@@ -9,77 +9,15 @@ export default function SubscriptionPage() {
   const [sortOrder, setSortOrder] = useState("asc");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [subscriptions, setSubscriptions] = useState([]);
   const perPage = 5;
 
-  // 🧠 Sample Data (Replace later with API)
-  const subscriptions = [
-    {
-      id: 1,
-      country: "India",
-      direction: "Import",
-      dataType: "Compiled",
-      dataRef: "Port-Level Customs Data",
-      coverage: "Full National Coverage",
-      fromDate: "2025-01-01",
-      toDate: "2025-03-31",
-      pointsPerRecord: 2,
-    },
-    {
-      id: 2,
-      country: "United States",
-      direction: "Export",
-      dataType: "Bill of Lading",
-      dataRef: "US Shipping Data",
-      coverage: "All Major Ports",
-      fromDate: "2025-02-01",
-      toDate: "2025-04-30",
-      pointsPerRecord: 3,
-    },
-    {
-      id: 3,
-      country: "China",
-      direction: "Import",
-      dataType: "Monthly Summary",
-      dataRef: "Government Import Records",
-      coverage: "Top 10 Ports",
-      fromDate: "2025-03-01",
-      toDate: "2025-06-30",
-      pointsPerRecord: 1,
-    },
-    {
-      id: 4,
-      country: "Germany",
-      direction: "Export",
-      dataType: "Shipment Manifest",
-      dataRef: "Logistics Manifest Data",
-      coverage: "European Region",
-      fromDate: "2025-04-01",
-      toDate: "2025-07-31",
-      pointsPerRecord: 2,
-    },
-    {
-      id: 5,
-      country: "UAE",
-      direction: "Import",
-      dataType: "Compiled",
-      dataRef: "Dubai Customs Database",
-      coverage: "All Emirates",
-      fromDate: "2025-05-01",
-      toDate: "2025-09-30",
-      pointsPerRecord: 2,
-    },
-    {
-      id: 6,
-      country: "Brazil",
-      direction: "Export",
-      dataType: "Summary Trade Data",
-      dataRef: "Brazil Ministry Trade",
-      coverage: "National Level",
-      fromDate: "2025-01-15",
-      toDate: "2025-03-15",
-      pointsPerRecord: 1,
-    },
-  ];
+  useEffect(() => {
+    fetch("/api/user/subscriptions")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => setSubscriptions(data?.subscriptions || []))
+      .catch(() => {});
+  }, []);
 
   // 🔍 Search + Sorting Logic
   const filteredData = useMemo(() => {
@@ -98,7 +36,7 @@ export default function SubscriptionPage() {
       });
   }, [subscriptions, search, sortField, sortOrder]);
 
-  const totalPages = Math.ceil(filteredData.length / perPage);
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / perPage));
   const visibleData = filteredData.slice((page - 1) * perPage, page * perPage);
 
   const toggleSort = (field) => {
@@ -192,7 +130,7 @@ export default function SubscriptionPage() {
             {visibleData.length > 0 ? (
               visibleData.map((s, i) => (
                 <motion.tr
-                  key={s.id}
+                  key={`${s.country}-${s.direction}-${s.dataRef}-${i}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.05 * i }}

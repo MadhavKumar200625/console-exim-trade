@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/session";
+import { logSearch } from "@/lib/userDb";
 
 function demoResponse(message) {
   return NextResponse.json({
@@ -8,13 +10,14 @@ function demoResponse(message) {
 }
 
 export async function POST(request) {
+  const session = await requireSession();
   const payload = await request.json();
-  console.log("POST /api/trades/search payload:", payload);
   const baseUrl =
     process.env.TRADES_API_BASE_URL ||
     process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
 
   if (!baseUrl) {
+    await logSearch(session.masterId, session.userId, payload, payload.Table_Name || "global");
     return demoResponse("TRADES_API_BASE_URL is not configured.");
   }
 
@@ -31,10 +34,9 @@ export async function POST(request) {
       },
     );
 
-    console.log("POST /api/trades/search response status:", response);
-
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
+    await logSearch(session.masterId, session.userId, payload, payload.Table_Name || "global");
 
     return NextResponse.json(data, { status: response.status });
   } catch (error) {

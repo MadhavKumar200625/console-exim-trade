@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/session";
 
 function demoResponse(message) {
   return NextResponse.json({
@@ -8,8 +9,8 @@ function demoResponse(message) {
 }
 
 export async function POST(request) {
+  await requireSession();
   const payload = await request.json();
-  console.log("POST /api/trades/summary payload:", payload);
   const baseUrl =
     process.env.TRADES_API_BASE_URL ||
     process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;

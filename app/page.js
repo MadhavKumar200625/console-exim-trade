@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Download,
   Search,
@@ -12,16 +12,32 @@ import {
 
 export default function Dashboard() {
   const [showAdvance, setShowAdvance] = useState(false);
-
-  const favorites = [];
-  const downloads = [
-    {
-      dataType: "Afghanistan Export Compiled Non Reporting Data",
-      date: "31/10/2025",
-      category: "Data",
-      records: 9,
+  const [dashboard, setDashboard] = useState({
+    usage: {
+      search: { used: 0, total: 0 },
+      downloads: { used: 0, total: 0 },
     },
-  ];
+    favorites: [],
+    downloads: [],
+  });
+
+  useEffect(() => {
+    fetch("/api/user/dashboard")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data) setDashboard(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const favorites = dashboard.favorites || [];
+  const downloads = dashboard.downloads || [];
+  const downloadTotal = dashboard.usage?.downloads?.total || 0;
+  const downloadUsed = dashboard.usage?.downloads?.used || 0;
+  const searchTotal = dashboard.usage?.search?.total || 0;
+  const searchUsed = dashboard.usage?.search?.used || 0;
+  const downloadPercent = downloadTotal ? Math.min(100, (downloadUsed / downloadTotal) * 100) : 0;
+  const searchPercent = searchTotal ? Math.min(100, (searchUsed / searchTotal) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-linear-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 lg:px-8 py-10 text-[#003466] relative overflow-hidden">
@@ -119,13 +135,13 @@ export default function Dashboard() {
             <span className="flex items-center gap-2">
               <Download size={18} className="text-blue-500" /> Downloads
             </span>
-            <span>16 / 1000</span>
+            <span>{downloadUsed} / {downloadTotal}</span>
           </div>
           <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
             <motion.div
               className="h-2 bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
               initial={{ width: "0%" }}
-              animate={{ width: "16%" }}
+              animate={{ width: `${downloadPercent}%` }}
               transition={{ duration: 1 }}
             />
           </div>
@@ -136,13 +152,13 @@ export default function Dashboard() {
             <span className="flex items-center gap-2">
               <Search size={18} className="text-blue-500" /> Searches
             </span>
-            <span>10 / 1000</span>
+            <span>{searchUsed} / {searchTotal}</span>
           </div>
           <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
             <motion.div
               className="h-2 bg-linear-to-r from-blue-400 to-blue-600 rounded-full"
               initial={{ width: "0%" }}
-              animate={{ width: "10%" }}
+              animate={{ width: `${searchPercent}%` }}
               transition={{ duration: 1 }}
             />
           </div>
@@ -167,7 +183,16 @@ export default function Dashboard() {
                 No Record Found
               </p>
             ) : (
-              <p>Data...</p>
+              <table className="w-full text-sm text-gray-700">
+                <tbody>
+                  {favorites.map((item) => (
+                    <tr key={item.id} className="border-b border-gray-100">
+                      <td className="py-3 font-semibold">{item.name}</td>
+                      <td className="py-3 text-right text-gray-500">{item.startDate || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </motion.div>
@@ -202,7 +227,7 @@ export default function Dashboard() {
                     className="hover:bg-blue-50 border-b border-gray-100"
                   >
                     <td className="py-3">{d.dataType}</td>
-                    <td className="py-3">{d.date}</td>
+                    <td className="py-3">{d.downloadDate}</td>
                     <td className="py-3">{d.category}</td>
                     <td className="py-3">{d.records}</td>
                   </motion.tr>
