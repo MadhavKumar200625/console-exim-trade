@@ -65,7 +65,8 @@ export default function Dashboard() {
       </motion.div>
 
       {/* 🔍 SEARCH SECTION */}
-      <motion.div
+      <motion.a
+      href = "/search"
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
@@ -121,7 +122,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </motion.div>
+      </motion.a>
 
       {/* STATS BAR */}
       <motion.div

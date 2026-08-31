@@ -20,6 +20,7 @@ export async function POST(request) {
   }
 
   try {
+    console.log(payload)
     const response = await fetch(
       `${baseUrl.replace(/\/$/, "")}/api/v1/trades/filters`,
       {

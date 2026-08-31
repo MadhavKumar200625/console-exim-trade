@@ -23,8 +23,15 @@ import {
   RefreshCw,
   Database,
   CheckCircle2,
+  Users,
+  Truck,
+  BarChart3,
+  FileBarChart,
+  TrendingUp,
 } from "lucide-react";
 import { MATCH_MODES, SEARCH_FIELDS, labelForField } from "./searchConfig";
+import VisualReport from "@/components/visual-report/VisualReport";
+import ReportBy, { reportByOptions } from "@/components/report-by/ReportBy";
 
 const exportColumns = [
   "Date",
@@ -157,6 +164,54 @@ const defaultGlobalSummary = {
   total_quantity: 20180394833963.258,
   total_value_usd: 8642876888368.149,
 };
+const DEFAULT_PAGINATION_TOTAL = 1000;
+
+function AggregationTable({ title, rows, loading, error, onRetry, offset, limit, total, onPrevious, onNext }) {
+  const columns = Array.from(
+    new Set(rows.flatMap((row) => (row && typeof row === "object" ? Object.keys(row) : []))),
+  );
+  const displayValue = (value) => {
+    if (value === null || value === undefined || value === "") return "-";
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+
+  return (
+    <div className="min-h-[420px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 bg-blue-50/40 px-5 py-4">
+        <div>
+          <h4 className="text-sm font-black uppercase tracking-[0.14em] text-[#003466]">{title}</h4>
+          <p className="mt-1 text-xs text-slate-500">Loaded on demand from the trade aggregation API.</p>
+        </div>
+        {rows.length > 0 && <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-blue-700 ring-1 ring-blue-100">{total.toLocaleString()} records</span>}
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-[330px] flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-xl"><RefreshCw size={22} className="animate-spin" /></div>
+          <div><p className="font-bold text-[#003466]">Loading {title.toLowerCase()}</p><p className="mt-1 text-xs text-slate-500">Fetching only this tab&apos;s data.</p></div>
+        </div>
+      ) : error ? (
+        <div className="flex min-h-[330px] flex-col items-center justify-center gap-4 px-6 text-center"><p className="max-w-md text-sm font-semibold text-amber-800">{error}</p><button onClick={onRetry} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow">Try again</button></div>
+      ) : !rows.length ? (
+        <div className="flex min-h-[330px] items-center justify-center px-6 text-center text-sm font-semibold text-slate-500">No {title.toLowerCase()} were returned for the current search.</div>
+      ) : (
+        <div className="w-full overflow-auto">
+          <table className="min-w-full border-separate border-spacing-0 text-sm">
+            <thead className="bg-white/90"><tr><th className="sticky left-0 z-10 border-b border-r border-blue-100 bg-blue-50 px-4 py-4 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-blue-500">#</th>{columns.map((column) => <th key={column} className="whitespace-nowrap border-b border-r border-blue-100 px-4 py-4 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-[#003466]">{column.replaceAll("_", " ")}</th>)}</tr></thead>
+            <tbody>{rows.map((row, index) => <tr key={index} className="group hover:bg-blue-50/60"><td className="sticky left-0 z-10 border-b border-r border-blue-50 bg-white px-4 py-3 font-mono text-xs font-bold text-blue-600 group-hover:bg-blue-50">{String(offset + index + 1).padStart(2, "0")}</td>{columns.map((column) => <td key={column} className="max-w-[280px] truncate border-b border-r border-blue-50 px-4 py-3 text-slate-700" title={displayValue(row[column])}>{displayValue(row[column])}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      )}
+      {!loading && !error && total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-100 bg-gradient-to-r from-white via-blue-50/60 to-white px-5 py-4">
+          <span className="text-sm font-bold text-[#003466]">Showing {(offset + 1).toLocaleString()}-{Math.min(offset + rows.length, total).toLocaleString()} of {total.toLocaleString()}</span>
+          <div className="flex items-center gap-2"><button onClick={onPrevious} disabled={offset === 0} className="inline-flex h-10 items-center gap-1 rounded-xl border border-blue-100 bg-white px-3 text-sm font-bold text-blue-700 disabled:opacity-40"><ChevronLeft size={15} />Previous</button><span className="rounded-xl bg-[#031c35] px-3 py-2 font-mono text-xs font-bold text-cyan-200">Page {Math.floor(offset / limit) + 1} / {Math.max(1, Math.ceil(total / limit))}</span><button onClick={onNext} disabled={offset + limit >= total} className="inline-flex h-10 items-center gap-1 rounded-xl bg-blue-600 px-3 text-sm font-bold text-white disabled:opacity-40">Next<ChevronRight size={15} /></button></div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SearchConsole({
   initialSuggestions = [],
@@ -176,7 +231,7 @@ export default function SearchConsole({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [pageOffset, setPageOffset] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(randomRows.length);
+  const [totalRecords, setTotalRecords] = useState(DEFAULT_PAGINATION_TOTAL);
   const [lastIncludeAdvanced, setLastIncludeAdvanced] = useState(true);
   const [rows, setRows] = useState(randomRows.slice(0, 25));
   const [summary, setSummary] = useState(defaultGlobalSummary);
@@ -260,6 +315,13 @@ export default function SearchConsole({
   const [filterColumn, setFilterColumn] = useState(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [showAdvance, setShowAdvance] = useState(false);
+  const [activeTab, setActiveTab] = useState("data");
+  const [reportByGroup, setReportByGroup] = useState("");
+  const [trendByGroup, setTrendByGroup] = useState("");
+  const [aggregationData, setAggregationData] = useState({
+    importers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
+    suppliers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
+  });
 
   const filterRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -411,17 +473,14 @@ export default function SearchConsole({
 
   function getApiTotal(data, fallback) {
     if (!data || typeof data !== "object") return fallback;
-
-    return (
-      data.total ??
-      data.totalRecords ??
-      data.count ??
-      data.recordsTotal ??
-      data.data?.total ??
-      data.data?.totalRecords ??
-      data.data?.count ??
-      fallback
-    );
+    const candidates = [
+      data.meta?.total_value,
+      data.data?.meta?.total_value,
+      data.result?.meta?.total_value,
+      data.total_value,
+    ];
+    const total = candidates.find((value) => Number(value) > 0);
+    return total === undefined ? fallback : Number(total);
   }
 
   function getSummaryData(data) {
@@ -446,7 +505,7 @@ export default function SearchConsole({
   }
 
   function getDemoPage(offset = pageOffset, limit = pageSize) {
-    return randomRows.slice(offset, offset + limit);
+    return Array.from({ length: limit }, (_, index) => randomRows[(offset + index) % randomRows.length]);
   }
 
   function showTableToast(message) {
@@ -607,6 +666,80 @@ export default function SearchConsole({
     return payload;
   }
 
+  function buildAggregationPayload(offset = 0, limit = 50) {
+    const payload = {
+      date_range: { from: dateRange.start, to: dateRange.end },
+      filters: buildFilters(true),
+      limit,
+      offset,
+    };
+
+    if (country) {
+      payload.Table_Name = `${country}_${tradeType === "import" ? "Import" : "Export"}`;
+    } else {
+      payload.global = true;
+    }
+
+    if (!Object.keys(payload.filters).length) delete payload.filters;
+    return payload;
+  }
+
+  function buildTrendPayload() {
+    const payload = {
+      date_range: { from: dateRange.start, to: dateRange.end },
+      filters: buildFilters(true),
+    };
+    if (country) {
+      payload.Table_Name = `${country}_${tradeType === "import" ? "Import" : "Export"}`;
+    } else {
+      payload.global = true;
+    }
+    if (!Object.keys(payload.filters).length) delete payload.filters;
+    return payload;
+  }
+
+  async function loadAggregation(type, nextOffset = aggregationData[type].offset) {
+    if (aggregationData[type].loading || (aggregationData[type].loaded && nextOffset === aggregationData[type].offset)) return;
+
+    setAggregationData((current) => ({
+      ...current,
+      [type]: { ...current[type], loading: true, error: "" },
+    }));
+
+    try {
+      const response = await fetch(`/api/trades/aggregations/${type}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildAggregationPayload(nextOffset, aggregationData[type].limit)),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || `Unable to load ${type}.`);
+
+      setAggregationData((current) => ({
+        ...current,
+        [type]: {
+          ...current[type],
+          rows: getApiRows(data),
+          loading: false,
+          error: "",
+          loaded: true,
+          offset: nextOffset,
+          total: getApiTotal(data, DEFAULT_PAGINATION_TOTAL),
+        },
+      }));
+    } catch (error) {
+      setAggregationData((current) => ({
+        ...current,
+        [type]: { ...current[type], loading: false, error: error.message || `Unable to load ${type}.` },
+      }));
+    }
+  }
+
+  function handleTabChange(tab) {
+    setActiveTab(tab);
+    if (tab === "importers" || tab === "suppliers") loadAggregation(tab);
+  }
+
   async function fetchSummary(payload) {
     const response = await fetch("/api/trades/summary", {
       method: "POST",
@@ -744,6 +877,10 @@ export default function SearchConsole({
     setApiMessage("");
     setShowSuggestions(false);
     setSuggestions([]);
+    setAggregationData({
+      importers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
+      suppliers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
+    });
 
     try {
       const [response, summaryResult] = await Promise.allSettled([
@@ -774,13 +911,13 @@ export default function SearchConsole({
       const apiRows = getApiRows(data);
       if (apiRows.length) {
         setRows(normalizeApiRows(apiRows));
-        setTotalRecords(Number(getApiTotal(data, nextOffset + apiRows.length)));
+        setTotalRecords(getApiTotal(data, DEFAULT_PAGINATION_TOTAL));
         setApiMessage("");
         notifyUsageChanged();
         showTableToast(`Table updated with ${apiRows.length.toLocaleString()} records.`);
       } else {
         setRows(getDemoPage(nextOffset, nextLimit));
-        setTotalRecords(randomRows.length);
+        setTotalRecords(DEFAULT_PAGINATION_TOTAL);
         setApiMessage((current) =>
           current || "No API rows returned. Showing demo data.",
         );
@@ -789,7 +926,7 @@ export default function SearchConsole({
       }
     } catch (error) {
       setRows(getDemoPage(nextOffset, nextLimit));
-      setTotalRecords(randomRows.length);
+      setTotalRecords(DEFAULT_PAGINATION_TOTAL);
       setApiMessage(`${error.message} Showing demo data.`);
       showTableToast("Table updated with demo data.");
     } finally {
@@ -1411,9 +1548,7 @@ export default function SearchConsole({
       </AnimatePresence>
 
       <div className="w-full flex flex-wrap justify-between items-center mb-6 gap-4 relative z-10">
-        {/* LEFT SIDE */}
         <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-white/80 bg-white/80 px-3 py-2 shadow-[0_18px_55px_rgba(0,52,102,0.12)] backdrop-blur-2xl">
-          {/* COLUMNS */}
           <button
             onClick={() => setShowColumnSelector(!showColumnSelector)}
             disabled={isLoading}
@@ -1423,7 +1558,6 @@ export default function SearchConsole({
             Columns
           </button>
 
-          {/* SAVE TABLE */}
           <button
             onClick={handleSaveTable}
             disabled={isLoading || isSaving}
@@ -1433,10 +1567,7 @@ export default function SearchConsole({
             {isSaving ? "Saving" : "Save Table"}
           </button>
         </div>
-
-        {/* RIGHT SIDE */}
         <div className="flex items-center gap-3">
-          {/* DOWNLOAD */}
           <button
             onClick={handleDownload}
             disabled={isLoading || isDownloading}
@@ -1446,7 +1577,6 @@ export default function SearchConsole({
             {isDownloading ? "Downloading" : "Download"}
           </button>
 
-          {/* FULLSCREEN */}
           <button
             onClick={() => setFullscreen(!fullscreen)}
             disabled={isLoading}
@@ -1504,6 +1634,45 @@ export default function SearchConsole({
             </div>
           </div>
 
+          <div className="relative border-b border-blue-100/80 bg-white/70 px-5 pt-3">
+            <div className="flex min-w-max gap-2 overflow-x-auto pb-3">
+              {[
+                { id: "data", label: "Data", icon: Database },
+                { id: "importers", label: "Importer List", icon: Users },
+                { id: "suppliers", label: "Supplier List", icon: Truck },
+                { id: "visual-report", label: "Visual Report", icon: BarChart3 },
+                { id: "report-by", label: "Report By", icon: FileBarChart },
+                { id: "trend-by", label: "Trend By", icon: TrendingUp },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                const loading = aggregationData[tab.id]?.loading;
+                if (tab.id === "report-by" || tab.id === "trend-by") {
+                  const selectedGroup = tab.id === "report-by" ? reportByGroup : trendByGroup;
+                  const setSelectedGroup = tab.id === "report-by" ? setReportByGroup : setTrendByGroup;
+                  return (
+                    <div key={tab.id} className={`flex items-center gap-1 rounded-xl p-1 ${active ? "bg-blue-600 shadow-md shadow-blue-500/25" : "bg-white ring-1 ring-slate-200"}`}>
+                      <button onClick={() => handleTabChange(tab.id)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${active ? "text-white" : "text-slate-600 hover:text-blue-700"}`}><Icon size={14} />{tab.label}</button>
+                      {active && <select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)} className="max-w-[150px] rounded-lg border-0 bg-white/95 px-2 py-2 text-xs font-bold text-[#003466] outline-none"><option value="">Select report</option>{reportByOptions.map(([label, field]) => <option key={field} value={field}>{label}</option>)}</select>}
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-xs font-bold transition ${active ? "bg-blue-600 text-white shadow-md shadow-blue-500/25" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-blue-50 hover:text-blue-700"}`}
+                  >
+                    {loading ? <RefreshCw size={14} className="animate-spin" /> : <Icon size={14} />}
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {activeTab === "data" ? (
+            <>
           <div className="relative w-full overflow-auto">
           <table className="min-w-[1900px] w-full border-separate border-spacing-0 text-sm">
             {/* HEADER */}
@@ -1860,6 +2029,35 @@ export default function SearchConsole({
               </button>
             </div>
           </div>
+            </>
+          ) : activeTab === "visual-report" ? (
+            <VisualReport requestBase={buildTrendPayload()} tradeType={tradeType} />
+          ) : activeTab === "report-by" ? (
+            <ReportBy key={reportByGroup || "report-by"} requestBase={buildTrendPayload()} groupBy={reportByGroup} />
+          ) : activeTab === "trend-by" ? (
+            <ReportBy key={trendByGroup || "trend-by"} requestBase={buildTrendPayload()} groupBy={trendByGroup} />
+          ) : (activeTab === "importers" || activeTab === "suppliers") ? (
+            <AggregationTable
+              title={activeTab === "importers" ? "Importer List" : "Supplier List"}
+              rows={aggregationData[activeTab].rows}
+              loading={aggregationData[activeTab].loading}
+              error={aggregationData[activeTab].error}
+              onRetry={() => loadAggregation(activeTab)}
+              offset={aggregationData[activeTab].offset}
+              limit={aggregationData[activeTab].limit}
+              total={aggregationData[activeTab].total}
+              onPrevious={() => loadAggregation(activeTab, Math.max(0, aggregationData[activeTab].offset - aggregationData[activeTab].limit))}
+              onNext={() => loadAggregation(activeTab, aggregationData[activeTab].offset + aggregationData[activeTab].limit)}
+            />
+          ) : (
+            <div className="flex min-h-[420px] flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                <BarChart3 size={24} />
+              </div>
+              <h4 className="mt-5 text-lg font-black text-[#003466]">Trend By</h4>
+              <p className="mt-2 max-w-sm text-sm text-slate-500">This workspace is ready for its report view. Data will be added here in a future update.</p>
+            </div>
+          )}
         </div>
 
         {fullscreen && (
