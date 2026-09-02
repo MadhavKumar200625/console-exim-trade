@@ -1,234 +1,33 @@
 "use client";
 
-import { useState } from "react";
-import {
-  ChevronDown,
-  Calendar,
-  ArrowLeft,
-} from "lucide-react";
-import AboutCompany from "./AboutCompany";
-import Analytics from "./Analytics";
-import MarketPartners from "./MarketPartners";
-import PortAnalysis from "./PortAnalysis";
-import SimilarBuyers from "./SimilarBuyers";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { BarChart3, Building2, ChevronDown, ChevronUp, DollarSign, Globe2, LoaderCircle, Network, Package, ShipWheel, Users } from "lucide-react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-/* ---------- TABS CONFIG ---------- */
-const tabs = [
-  "About Us",
-  "Analytics",
-  "Market And Partners",
-  "Port Analysis",
-  "Nexus",
-  "Similar Buyers",
-  "Contact Us",
-];
+const ComparisonTree = dynamic(() => import("./ComparisonTree"), { ssr: false, loading: () => <div className="flex h-44 items-center justify-center rounded-3xl border border-blue-100 bg-white text-sm font-bold text-blue-700"><LoaderCircle size={18} className="mr-2 animate-spin" />Loading comparison tree</div> });
+const sections = [{ id: "hs", title: "Top Exported HS Codes", group: "HS_Code", type: "bar" }, { id: "month", title: "Month Wise", group: "Month", type: "line" }, { id: "country", title: "Country Wise", group: "country", type: "pie" }, { id: "partner", title: "Buyer Supplier Wise", group: "partner", type: "area" }, { id: "port", title: "Port Wise", group: "port", type: "bar" }];
+const colors = ["#2563eb", "#06b6d4", "#8b5cf6", "#f59e0b", "#ec4899", "#14b8a6"];
+function rowsFrom(payload) { if (Array.isArray(payload)) return payload; for (const key of ["data", "rows", "results", "items", "records"]) if (Array.isArray(payload?.[key])) return payload[key]; return rowsFrom(payload?.data || []); }
+function label(row, field) { return String(row?.[field] ?? row?.[field.toLowerCase()] ?? row?.dim ?? row?.name ?? row?.value ?? "Unknown"); }
+function value(row) { return Number(row?.total_value_usd ?? row?.Total_Value_in_USD ?? row?.value ?? row?.shipment_count ?? row?.count ?? 0) || 0; }
+function compact(v) { return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(Number(v || 0)); }
 
-/* ---------- DUMMY COMPONENTS ---------- */
-const TabContent = ({ activeTab }) => {
-  switch (activeTab) {
-    case "About Us":
-      return <AboutCompany/>;
-    case "Analytics":
-      return <Analytics/>;
-    case "Market And Partners":
-      return <MarketPartners />;
-    case "Port Analysis":
-      return <PortAnalysis/>
-    case "Similar Buyers":
-      return <SimilarBuyers/>
-    case "Nexus":
-      return <div className="p-6">Nexus Content</div>;
-    case "Contact Us":
-      return <div className="p-6">Contact Us Content</div>;
-    default:
-      return <AboutCompany/>;
-  }
-};
+function AnalyticsSection({ section, base, profile }) {
+  const [open, setOpen] = useState(false), [state, setState] = useState({ loading: false, loaded: false, rows: [], error: "" });
+  const field = section.group === "country" ? (profile.role === "importer" ? "Export_Country" : "Import_Country") : section.group === "partner" ? (profile.role === "importer" ? "Exporter_Name" : "Importer_Name") : section.group === "port" ? (profile.role === "importer" ? "Loading_Port" : "Unloading_Port") : section.group;
+  async function toggle() { setOpen(v => !v); if (state.loaded || state.loading) return; setState(s => ({ ...s, loading: true })); try { const r = await fetch("/api/trades/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...base, group_by: field, metric: "shipment_count", limit: 20 }) }); const d = await r.json(); if (!r.ok) throw new Error(d?.message || "Unable to load this report."); setState({ loading: false, loaded: true, rows: rowsFrom(d), error: "" }); } catch (e) { setState({ loading: false, loaded: false, rows: [], error: e.message }); } }
+  const data = state.rows.slice(0, 10).map(row => ({ name: label(row, field), value: value(row) })); const columns = [...new Set(state.rows.flatMap(row => Object.keys(row || {})))];
+  const chart = section.type === "pie" ? <PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius={52} outerRadius={92}>{data.map((_, i) => <Cell key={i} fill={colors[i % colors.length]} />)}</Pie><Tooltip formatter={v => Number(v).toLocaleString()} /></PieChart> : section.type === "line" ? <LineChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{ fontSize: 10 }}/><YAxis tick={{ fontSize: 10 }}/><Tooltip formatter={v => Number(v).toLocaleString()}/><Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={3}/></LineChart> : section.type === "area" ? <AreaChart data={data}><defs><linearGradient id={`area-${section.id}`} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#06b6d4" stopOpacity=".7"/><stop offset="100%" stopColor="#06b6d4" stopOpacity="0"/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{ fontSize: 10 }}/><YAxis tick={{ fontSize: 10 }}/><Tooltip formatter={v => Number(v).toLocaleString()}/><Area type="monotone" dataKey="value" stroke="#0891b2" fill={`url(#area-${section.id})`}/></AreaChart> : <BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name" tick={{ fontSize: 10 }}/><YAxis tick={{ fontSize: 10 }}/><Tooltip formatter={v => Number(v).toLocaleString()}/><Bar dataKey="value" fill="#2563eb" radius={[5,5,0,0]}/></BarChart>;
+  return <section className="overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm"><button onClick={toggle} className="flex w-full items-center justify-between gap-4 px-5 py-5 text-left hover:bg-blue-50/50"><div><h2 className="font-black text-[#003466]">{section.title}</h2><p className="mt-1 text-xs font-semibold text-blue-600">Shipment Wise · load on expand</p></div>{open ? <ChevronUp className="text-blue-700"/> : <ChevronDown className="text-blue-700"/>}</button>{open && <div className="border-t border-blue-100 p-5">{state.loading ? <div className="flex h-52 items-center justify-center gap-2 text-sm font-bold text-blue-700"><LoaderCircle size={18} className="animate-spin"/>Loading data</div> : state.error ? <p className="py-12 text-center text-sm text-amber-800">{state.error}</p> : !state.rows.length ? <p className="py-12 text-center text-sm text-slate-500">No data returned.</p> : <div className="grid gap-5 lg:grid-cols-2"><div className="h-[300px] rounded-2xl bg-blue-50/50 p-3"><ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer></div><div className="max-h-[300px] overflow-auto rounded-2xl border border-blue-100"><table className="min-w-full text-sm"><thead className="sticky top-0 bg-blue-50"><tr>{columns.map(c => <th key={c} className="whitespace-nowrap border-b border-blue-100 px-3 py-3 text-left text-[10px] font-black uppercase tracking-wide text-blue-700">{c.replaceAll("_", " ")}</th>)}</tr></thead><tbody>{state.rows.map((r,i) => <tr key={i} className="border-b border-blue-50 hover:bg-blue-50/50">{columns.map(c => <td key={c} className="max-w-[200px] truncate px-3 py-3 text-slate-600" title={String(r[c] ?? "-")}>{String(r[c] ?? "-")}</td>)}</tr>)}</tbody></table></div></div>}</div>}</section>;
+}
 
 export default function CompanyPage() {
-  const [activeTab, setActiveTab] = useState("About Us");
-
-  const [currency, setCurrency] = useState("USD");
-  const [country, setCountry] = useState("India");
-  const [range, setRange] = useState("3M");
-
-  const [showCurrency, setShowCurrency] = useState(false);
-  const [showCountry, setShowCountry] = useState(false);
-
-  const currencies = ["USD", "INR", "EUR"];
-  const countries = ["India", "USA", "Germany"];
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-[#f5f9ff] to-[#eaf3ff] px-6 py-6">
-
-      {/* ================= HEADER ================= */}
-      <div className="bg-white/80 backdrop-blur-xl border border-blue-100 rounded-2xl p-6 shadow-sm mb-6">
-
-        {/* TOP ROW */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-
-          {/* LEFT */}
-          {/* LEFT */}
-<div className="flex items-center gap-4">
-
-  {/* BACK BUTTON */}
-  <button className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center hover:scale-105 transition shadow-sm">
-    <ArrowLeft size={18} className="text-blue-700" />
-  </button>
-
-  {/* COMPANY INFO */}
-  <div className="flex flex-col gap-1">
-
-    {/* COMPANY NAME */}
-    <h1 className="text-2xl font-bold text-[#003466] leading-tight tracking-tight">
-      GUSTI LEDER FULFILLMENT
-      <span className="ml-2 text-gray-400 font-medium text-lg">
-        SP Z O O
-      </span>
-    </h1>
-
-    {/* SUB INFO */}
-    <div className="flex items-center gap-3 mt-1">
-
-      {/* COUNTRY BADGE */}
-      <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100 shadow-sm">
-
-        {/* FLAG */}
-        <img
-          src="https://flagcdn.com/w40/pl.png"
-          alt="Poland"
-          className="w-5 h-5 rounded-full object-cover"
-        />
-
-        {/* COUNTRY */}
-        <span className="text-sm font-medium text-blue-700">
-          Poland
-        </span>
-      </div>
-
-      {/* TYPE */}
-      <span className="text-sm text-gray-500">
-        Buyer Profile
-      </span>
-
-      {/* STATUS DOT */}
-      <span className="flex items-center gap-1 text-xs text-green-600">
-        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-        Active
-      </span>
-
-    </div>
-  </div>
-</div>
-
-          {/* RIGHT CONTROLS */}
-          <div className="flex flex-wrap items-center gap-3">
-
-            {/* CURRENCY */}
-            <div className="relative">
-              <button
-                onClick={() => setShowCurrency(!showCurrency)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-100 rounded-lg text-sm shadow-sm hover:bg-blue-50"
-              >
-                {currency}
-                <ChevronDown size={14} />
-              </button>
-
-              {showCurrency && (
-                <div className="absolute top-11 right-0 bg-white border rounded-lg shadow z-50">
-                  {currencies.map((c) => (
-                    <div
-                      key={c}
-                      onClick={() => {
-                        setCurrency(c);
-                        setShowCurrency(false);
-                      }}
-                      className="px-4 py-2 text-sm hover:bg-blue-50 cursor-pointer"
-                    >
-                      {c}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* COUNTRY */}
-            <div className="relative">
-              <button
-                onClick={() => setShowCountry(!showCountry)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-100 rounded-lg text-sm shadow-sm hover:bg-blue-50"
-              >
-                {country}
-                <ChevronDown size={14} />
-              </button>
-
-              {showCountry && (
-                <div className="absolute top-11 right-0 bg-white border rounded-lg shadow z-50">
-                  {countries.map((c) => (
-                    <div
-                      key={c}
-                      onClick={() => {
-                        setCountry(c);
-                        setShowCountry(false);
-                      }}
-                      className="px-4 py-2 text-sm hover:bg-blue-50 cursor-pointer"
-                    >
-                      {c}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* RANGE */}
-            <div className="flex bg-blue-50 rounded-full px-3 py-1 text-sm">
-              {["1M", "3M", "6M", "1Yr"].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={`px-2 ${
-                    range === r
-                      ? "text-blue-700 font-semibold"
-                      : "text-gray-500"
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-
-            {/* DATE */}
-            <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm shadow">
-              Jan 1, 2026 — Mar 9, 2026
-              <Calendar size={14} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ================= TABS ================= */}
-      <div className="bg-white/70 backdrop-blur-xl border border-blue-100 rounded-xl p-2 flex gap-2 overflow-x-auto mb-6">
-
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm rounded-lg whitespace-nowrap transition
-              ${
-                activeTab === tab
-                  ? "bg-blue-600 text-white shadow"
-                  : "text-blue-700 hover:bg-blue-50"
-              }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* ================= CONTENT ================= */}
-      <div className="bg-white/80 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-sm min-h-[400px]">
-        <TabContent activeTab={activeTab} />
-      </div>
-    </div>
-  );
+  const router = useRouter(), params = useSearchParams(); const name = params.get("name") || "Company profile", role = params.get("role") === "supplier" ? "supplier" : "importer", country = params.get("country") || ""; const companyField = role === "importer" ? "Importer_Name" : "Exporter_Name";
+  const profile = { name, role, country, companyField }; const base = useMemo(() => ({ ...(country ? { Table_Name: `${country}_${role === "importer" ? "Import" : "Export"}` } : { global: true }), filters: { [companyField]: name, [`${companyField}_mode`]: "exact" } }), [country, role, name, companyField]);
+  const [summary, setSummary] = useState(null), [counts, setCounts] = useState({}), [error, setError] = useState(""), [loading, setLoading] = useState(true), [treeOpen, setTreeOpen] = useState(false);
+  useEffect(() => { let active = true; const fields = [role === "importer" ? "Exporter_Name" : "Importer_Name", role === "importer" ? "Export_Country" : "Import_Country", role === "importer" ? "Loading_Port" : "Unloading_Port"]; Promise.all([fetch("/api/trades/summary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(base) }).then(async r => { const d=await r.json(); if(!r.ok) throw new Error(d?.message); return d?.data?.summary || d?.summary || d?.data || d; }), ...fields.map(group_by => fetch("/api/trades/report", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ ...base, group_by, metric:"shipment_count", limit:100 }) }).then(async r => r.ok ? rowsFrom(await r.json()) : []))]).then(([s,partners,countries,ports]) => { if(active) { setSummary(s); setCounts({partners:partners.length,countries:countries.length,ports:ports.length}); }}).catch(e => active && setError(e.message || "Unable to load company profile.")).finally(() => active && setLoading(false)); return () => { active=false; }; }, [base, role]);
+  const cards = [{ label:"Total Shipments", value:compact(summary?.total_shipments ?? summary?.shipment_count), icon:Package }, { label:"Total Value", value:`$${compact(summary?.total_value_usd ?? summary?.Total_Value_in_USD)}`, icon:DollarSign }, { label:role === "importer" ? "Suppliers" : "Importers", value:counts.partners ?? "–", icon:Users }, { label:"Countries", value:counts.countries ?? "–", icon:Globe2 }, { label:"Ports", value:counts.ports ?? "–", icon:ShipWheel }];
+  return <main className="min-h-screen bg-gradient-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 py-6 sm:px-6"><div className="mx-auto max-w-7xl"><button onClick={() => router.back()} className="mb-5 text-sm font-bold text-blue-700 hover:text-cyan-600">← Back to results</button><section className="rounded-3xl border border-blue-100 bg-white p-6 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-5"><div className="flex items-start gap-4"><span className="rounded-2xl bg-gradient-to-br from-blue-700 to-cyan-500 p-3 text-white"><Building2 size={28}/></span><div><p className="text-xs font-black uppercase tracking-[.16em] text-blue-600">{role === "importer" ? "Importer" : "Supplier"} profile</p><h1 className="mt-1 text-2xl font-black text-[#003466] sm:text-3xl">{name}</h1>{country && <span className="mt-3 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 ring-1 ring-blue-100">{country}</span>}</div></div><button onClick={() => setTreeOpen(v => !v)} className="inline-flex items-center gap-2 rounded-xl bg-[#003466] px-4 py-3 text-sm font-bold text-white shadow hover:bg-blue-800"><Network size={17}/>{treeOpen ? "Hide comparison tree" : "View comparison tree"}</button></div>{error && <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">{error}</p>}<div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{cards.map(({label,value,icon:Icon}) => <div key={label} className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50 p-4"><Icon size={17} className="text-blue-600"/><p className="mt-4 text-xl font-black text-[#003466]">{loading ? <LoaderCircle size={18} className="animate-spin"/> : error ? "–" : value}</p><p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p></div>)}</div></section>{treeOpen && <div className="mt-6"><ComparisonTree profile={profile} requestBase={base}/></div>}<div className="mt-6 space-y-4"><div className="flex items-center gap-2 px-1"><BarChart3 size={19} className="text-blue-700"/><h2 className="font-black text-[#003466]">Trade analytics</h2><span className="text-xs text-slate-500">Each section fetches only when expanded.</span></div>{sections.map(s => <AnalyticsSection key={s.id} section={s} base={base} profile={profile}/>)}</div></div></main>;
 }

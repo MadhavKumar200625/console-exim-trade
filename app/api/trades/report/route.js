@@ -11,6 +11,7 @@ function demoResponse(message) {
 export async function POST(request) {
   await requireSession();
   const payload = await request.json();
+  console.log("[trades/report] payload", JSON.stringify(payload));
   const baseUrl =
     process.env.TRADES_API_BASE_URL ||
     process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
@@ -34,6 +35,7 @@ export async function POST(request) {
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
+    // console.log("[trades/report] response", response.status, JSON.stringify(data));
 
     return NextResponse.json(data, { status: response.status });
   } catch (error) {

@@ -9,13 +9,7 @@ function valueFor(row) {
   return Number(row?.value ?? row?.total_value_usd ?? 0) || 0;
 }
 
-function formatMonth(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(date);
-}
-
-export default function TrendPanel({ title, rows, loading, error, chartFirst, chartType }) {
+export default function TrendPanel({ title, rows, loading, error, chartFirst, chartType, tableColumns = [] }) {
   const chartRows = rows.slice(0, 10);
   const total = chartRows.reduce((sum, row) => sum + valueFor(row), 0) || 1;
   const pieGradient = chartRows.map((row, index) => {
@@ -24,11 +18,20 @@ export default function TrendPanel({ title, rows, loading, error, chartFirst, ch
     return `${chartColors[index % chartColors.length]} ${start}% ${end}%`;
   }).join(", ");
 
+  const displayTableValue = (row, column) => {
+    if (column === "Total_Value_in_USD") return valueFor(row);
+    if (column === "Month") return row.Month ?? row.month ?? row.dim ?? "-";
+    if (column === "Country") return row.Country ?? row.country ?? row.dim ?? "-";
+    if (column === "HS_Code") return row.HS_Code ?? row.hs_code ?? row.dim ?? "-";
+    if (column === "Importer_Name") return row.Importer_Name ?? row.importer_name ?? row.dim ?? "-";
+    if (column === "Exporter_Name") return row.Exporter_Name ?? row.exporter_name ?? "-";
+    return row[column] ?? "-";
+  };
   const table = (
     <div className="min-w-0 overflow-auto rounded-2xl border border-blue-100 bg-white">
       <table className="min-w-full text-sm">
-        <thead className="bg-blue-50/80 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-blue-600"><tr><th className="px-4 py-3">Month</th><th className="px-4 py-3">{title}</th><th className="px-4 py-3 text-right">Value</th><th className="px-4 py-3 text-right">Quantity</th><th className="px-4 py-3 text-right">Shipments</th></tr></thead>
-        <tbody>{rows.slice(0, 10).map((row, index) => <tr key={`${row.dim ?? "dimension"}-${row.month ?? index}-${index}`} className="border-t border-blue-50 text-slate-700"><td className="whitespace-nowrap px-4 py-3 text-xs font-medium">{formatMonth(row.month)}</td><td className="max-w-[150px] truncate px-4 py-3 font-semibold" title={String(row.dim ?? "-")}>{row.dim ?? "-"}</td><td className="px-4 py-3 text-right font-mono text-xs">{valueFor(row).toLocaleString()}</td><td className="px-4 py-3 text-right font-mono text-xs">{Number(row.quantity || 0).toLocaleString()}</td><td className="px-4 py-3 text-right font-mono text-xs">{Number(row.shipment_count || 0).toLocaleString()}</td></tr>)}</tbody>
+        <thead className="bg-blue-50/80 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-blue-600"><tr>{tableColumns.map((column) => <th key={column} className="px-4 py-3">{column.replaceAll("_", " ")}</th>)}</tr></thead>
+        <tbody>{rows.slice(0, 10).map((row, index) => <tr key={`${row.dim ?? "dimension"}-${row.month ?? index}-${index}`} className="border-t border-blue-50 text-slate-700">{tableColumns.map((column) => <td key={column} className="max-w-[220px] truncate px-4 py-3 font-mono text-xs" title={String(displayTableValue(row, column))}>{column === "Total_Value_in_USD" ? Number(displayTableValue(row, column)).toLocaleString() : displayTableValue(row, column)}</td>)}</tr>)}</tbody>
       </table>
     </div>
   );

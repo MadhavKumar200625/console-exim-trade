@@ -3,53 +3,31 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
-export const reportByOptions = [
-  ["Export Country", "Export_Country"], ["Supplier Name", "Supplier_Name"], ["Importer ID", "Importer_ID"],
-  ["Importer Name", "Importer_Name"], ["Unloading Port", "Unloading_Port"], ["Dispatch Port", "Dispatch_Port"],
-  ["HS Code", "HS_Code"], ["Heading", "Heading"], ["Chapter", "Chapter"], ["Month", "Month"], ["Transport Mode", "Transport_Mode"],
-];
-const emptyRows = [];
+export const reportByOptions = [["Export Country", "Export_Country"], ["Supplier Name", "Supplier_Name"], ["Importer ID", "Importer_ID"], ["Importer Name", "Importer_Name"], ["Unloading Port", "Unloading_Port"], ["Dispatch Port", "Dispatch_Port"], ["HS Code", "HS_Code"], ["Heading", "Heading"], ["Chapter", "Chapter"], ["Month", "Month"], ["Transport Mode", "Transport_Mode"]];
+function rowsFrom(data) { if (Array.isArray(data)) return data; for (const key of ["data", "results", "rows", "items", "records"]) if (Array.isArray(data?.[key])) return data[key]; return data?.data && typeof data.data === "object" ? rowsFrom(data.data) : []; }
+function dim(row, field) { return row?.[field] ?? row?.[field.toLowerCase()] ?? row?.dim ?? row?.dimension ?? "-"; }
+function metricValue(row, metric) { return row?.[metric] ?? row?.[metric.toLowerCase()] ?? row?.value ?? row?.metric_value ?? row?.shipment_count ?? 0; }
+function show(value) { return value === null || value === undefined || value === "" ? "-" : String(value); }
+function rawMonth(row) { return row?.month ?? row?.Month ?? row?.period ?? row?.date ?? ""; }
+function monthKey(value) { const match = String(value).match(/^(\d{4})-(\d{1,2})/); return match ? `${match[1]}-${String(match[2]).padStart(2, "0")}` : String(value); }
+function monthLabel(key) { const match = String(key).match(/^(\d{4})-(\d{2})$/); return match ? `${match[2]}/${match[1]}` : key || "-"; }
+function monthsInRange(from, to) { const start = monthKey(from); const end = monthKey(to); if (!/^\d{4}-\d{2}$/.test(start) || !/^\d{4}-\d{2}$/.test(end) || start > end) return []; const months = []; let [year, month] = start.split("-").map(Number); const [endYear, endMonth] = end.split("-").map(Number); while (year < endYear || (year === endYear && month <= endMonth)) { months.push(`${year}-${String(month).padStart(2, "0")}`); month += 1; if (month === 13) { month = 1; year += 1; } } return months; }
 
-function apiRows(payload) {
-  if (Array.isArray(payload)) return payload;
-  for (const key of ["data", "results", "rows", "items", "records"]) if (Array.isArray(payload?.[key])) return payload[key];
-  return payload?.data && typeof payload.data === "object" ? apiRows(payload.data) : [];
-}
-
-function value(value) {
-  if (value === null || value === undefined || value === "") return "-";
-  return typeof value === "object" ? JSON.stringify(value) : String(value);
-}
-
-const defaultTotal = 1000;
-
-function responseTotal(payload) {
-  const candidates = [payload?.meta?.total_value, payload?.data?.meta?.total_value, payload?.total_value];
-  const total = candidates.find((item) => Number(item) > 0);
-  return total === undefined ? defaultTotal : Number(total);
-}
-
-export default function ReportBy({ requestBase, groupBy }) {
-  const [cache, setCache] = useState({});
-  const [offset, setOffset] = useState(0);
-  const [reloadToken, setReloadToken] = useState(0);
-  const limit = 50;
+export default function ReportBy({ requestBase, groupBy, metric = "Total_Value_in_USD", trend = false }) {
+  const [state, setState] = useState({ key: "", rows: [], loading: false, error: "" });
+  const [page, setPage] = useState(0);
   const requestKey = JSON.stringify(requestBase);
-  const cacheKey = `${groupBy}-${offset}`;
-  const entry = cache[cacheKey];
-  const rows = entry?.rows || emptyRows;
-  const columns = useMemo(() => Array.from(new Set(rows.flatMap((row) => Object.keys(row || {})))), [rows]);
-
-  useEffect(() => {
-    if (!groupBy || entry?.loading || entry?.loaded) return;
-    let cancelled = false;
-    fetch("/api/trades/trends/monthly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestBase, group_by: groupBy, metric: "Total_Value_in_USD", limit, offset }) })
-      .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload?.message || "Unable to load report data."); return payload; })
-      .then((payload) => { if (!cancelled) setCache((current) => ({ ...current, [cacheKey]: { rows: apiRows(payload), loading: false, error: "", loaded: true, total: responseTotal(payload) } })); })
-      .catch((error) => { if (!cancelled) setCache((current) => ({ ...current, [cacheKey]: { rows: [], loading: false, error: error.message || "Unable to load report data.", loaded: false, total: defaultTotal } })); });
-    return () => { cancelled = true; };
-  }, [cacheKey, entry?.loaded, entry?.loading, groupBy, limit, offset, reloadToken, requestBase, requestKey]);
-
-  const total = entry?.total || defaultTotal;
-  return <div className="min-h-[420px] p-5">{!groupBy ? <div className="flex min-h-[280px] items-center justify-center text-sm font-semibold text-slate-500">Choose a report option from the tab bar to load its table.</div> : !entry || entry.loading ? <div className="flex min-h-[280px] items-center justify-center gap-3 text-sm font-bold text-blue-700"><RefreshCw size={18} className="animate-spin" />Loading report</div> : entry.error ? <div className="flex min-h-[280px] flex-col items-center justify-center gap-4"><p className="text-sm font-semibold text-amber-800">{entry.error}</p><button onClick={() => { setCache((current) => { const { [cacheKey]: _removed, ...rest } = current; return rest; }); setReloadToken((token) => token + 1); }} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">Try again</button></div> : entry.loaded && !rows.length ? <div className="flex min-h-[280px] items-center justify-center text-sm font-semibold text-slate-500">No data returned for this report.</div> : entry.loaded ? <><div className="overflow-auto rounded-2xl border border-blue-100"><table className="min-w-full border-separate border-spacing-0 text-sm"><thead className="bg-blue-50/80"><tr>{columns.map((column) => <th key={column} className="whitespace-nowrap border-b border-r border-blue-100 px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-blue-600">{column.replaceAll("_", " ")}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index} className="hover:bg-blue-50/50">{columns.map((column) => <td key={column} className="max-w-[320px] truncate border-b border-r border-blue-50 px-4 py-3 text-slate-700" title={value(row[column])}>{value(row[column])}</td>)}</tr>)}</tbody></table></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span className="text-sm font-bold text-[#003466]">Showing {(offset + 1).toLocaleString()}-{Math.min(offset + rows.length, total).toLocaleString()} of {total.toLocaleString()} <span className="ml-2 rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-700">50 per page</span></span><div className="flex items-center gap-2"><button onClick={() => setOffset(Math.max(0, offset - limit))} disabled={offset === 0} className="inline-flex h-10 items-center gap-1 rounded-xl border border-blue-100 bg-white px-3 text-sm font-bold text-blue-700 disabled:opacity-40"><ChevronLeft size={15} />Previous</button><span className="rounded-xl bg-[#031c35] px-3 py-2 font-mono text-xs font-bold text-cyan-200">Page {Math.floor(offset / limit) + 1} / {Math.max(1, Math.ceil(total / limit))}</span><button onClick={() => setOffset(offset + limit)} disabled={offset + limit >= total} className="inline-flex h-10 items-center gap-1 rounded-xl bg-blue-600 px-3 text-sm font-bold text-white disabled:opacity-40">Next<ChevronRight size={15} /></button></div></div></> : null}</div>;
+  const requestPayload = useMemo(() => JSON.parse(requestKey), [requestKey]);
+  const key = `${requestKey}-${groupBy}-${metric}-${trend}`;
+  useEffect(() => { if (!groupBy) return; let cancelled = false; const endpoint = trend ? "/api/trades/trends/monthly" : "/api/trades/report"; fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestPayload, group_by: groupBy, metric, limit: 100, offset: 0 }) }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d?.message || `Unable to load ${trend ? "trend" : "report"} data.`); return rowsFrom(d); }).then(rows => !cancelled && setState({ key, rows, loading: false, error: "" })).catch(error => !cancelled && setState({ key, rows: [], loading: false, error: error.message || `Unable to load ${trend ? "trend" : "report"} data.` })); return () => { cancelled = true; }; }, [groupBy, key, metric, requestPayload, trend]);
+  const pivot = useMemo(() => { const trendRows = state.rows.filter(row => monthKey(rawMonth(row))); const responseMonths = [...new Set(trendRows.map(row => monthKey(rawMonth(row))))].sort(); const months = monthsInRange(requestPayload?.date_range?.from, requestPayload?.date_range?.to); const allMonths = months.length ? months : responseMonths; const result = new Map(); trendRows.forEach(row => { const name = String(dim(row, groupBy)); if (!result.has(name)) result.set(name, { [groupBy]: name }); result.get(name)[monthKey(rawMonth(row))] = Number(metricValue(row, metric)) || 0; }); const rows = [...result.values()].map(row => { allMonths.forEach(key => { row[key] = row[key] ?? 0; }); row.Total = allMonths.reduce((sum, key) => sum + (Number(row[key]) || 0), 0); return row; }); return { months: allMonths, rows }; }, [groupBy, metric, requestPayload, state.rows]);
+  if (!groupBy) return <div className="flex min-h-[280px] items-center justify-center text-sm font-semibold text-slate-500">Choose a report option from the tab bar to load its table.</div>;
+  if (state.loading || state.key !== key) return <div className="flex min-h-[280px] items-center justify-center gap-3 text-sm font-bold text-blue-700"><RefreshCw size={18} className="animate-spin"/>Loading {trend ? "trend" : "report"}</div>;
+  if (state.error) return <div className="flex min-h-[280px] items-center justify-center text-center text-sm font-semibold text-amber-800">{state.error}</div>;
+  const reportTotal = state.rows.reduce((sum, row) => sum + (Number(metricValue(row, metric)) || 0), 0);
+  const reportRows = state.rows.map(row => ({ [groupBy]: dim(row, groupBy), [metric]: metricValue(row, metric), Percentage: reportTotal ? ((Number(metricValue(row, metric)) || 0) / reportTotal) * 100 : 0 }));
+  const columns = trend ? ["S. No.", groupBy, ...pivot.months, "Total"] : ["S. No.", groupBy, metric, "Percentage"];
+  const tableRows = trend ? pivot.rows : reportRows;
+  const pageSize = 25; const totalPages = Math.max(1, Math.ceil(tableRows.length / pageSize)); const safePage = Math.min(page, totalPages - 1); const visibleRows = tableRows.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  return <div className="min-h-[420px] p-5">{!tableRows.length ? <div className="flex min-h-[280px] items-center justify-center text-sm font-semibold text-slate-500">No data returned.</div> : <><p className="mb-3 text-xs font-bold uppercase tracking-wide text-blue-700">Metric: {metric.replaceAll("_", " ")}</p><div className="overflow-x-auto overflow-y-hidden rounded-2xl border border-blue-100"><table className="min-w-full text-sm"><thead className="bg-blue-50"><tr>{columns.map(col => <th key={col} className="min-w-[120px] whitespace-nowrap border-b border-r border-blue-100 px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-blue-600">{col === "S. No." ? col : trend && pivot.months.includes(col) ? monthLabel(col) : col.replaceAll("_", " ")}</th>)}</tr></thead><tbody>{visibleRows.map((row, index) => <tr key={index} className="border-b border-blue-50 hover:bg-blue-50/50">{columns.map(col => <td key={col} className={`whitespace-nowrap border-r border-blue-50 px-4 py-3 text-slate-700 ${col === "Total" ? "bg-blue-50 font-bold text-blue-800" : ""}`}>{col === "S. No." ? safePage * pageSize + index + 1 : col === "Percentage" ? `${Number(row[col]).toFixed(2)}%` : show(row[col])}</td>)}</tr>)}</tbody></table></div><div className="mt-4 flex items-center justify-between gap-3"><span className="text-sm font-bold text-[#003466]">Showing {(safePage * pageSize) + 1}-{Math.min((safePage + 1) * pageSize, tableRows.length)} of {tableRows.length}</span><div className="flex gap-2"><button onClick={() => setPage(Math.max(0, safePage - 1))} disabled={!safePage} className="rounded-xl border border-blue-100 bg-white p-2 text-blue-700 disabled:opacity-40"><ChevronLeft size={16}/></button><button onClick={() => setPage(Math.min(totalPages - 1, safePage + 1))} disabled={safePage >= totalPages - 1} className="rounded-xl bg-blue-600 p-2 text-white disabled:opacity-40"><ChevronRight size={16}/></button></div></div></>}</div>;
 }

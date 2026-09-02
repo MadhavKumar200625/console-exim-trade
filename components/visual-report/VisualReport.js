@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import TrendPanel from "./TrendPanel";
 
 const reports = [
-  { id: "hs-code", title: "HS Code", groupBy: "HS_Code", chartFirst: false, chartType: "bar" },
-  { id: "month", title: "Month", groupBy: "Month", chartFirst: true, chartType: "pie" },
-  { id: "country", title: "Country", groupBy: "Country", chartFirst: false, chartType: "bar" },
-  { id: "partner", title: "Importer / Exporter", groupBy: "Importer_Name", chartFirst: true, chartType: "pie" },
+  { id: "hs-code", title: "HS Code", groupBy: "HS_Code", tableColumns: ["HS_Code", "Total_Value_in_USD"], chartFirst: false, chartType: "bar" },
+  { id: "month", title: "Month", groupBy: "Month", tableColumns: ["Month", "Total_Value_in_USD"], chartFirst: true, chartType: "pie" },
+  { id: "country", title: "Country", groupBy: "Country", tableColumns: ["Country", "Total_Value_in_USD"], chartFirst: false, chartType: "bar" },
+  { id: "partner", title: "Importer / Exporter", groupBy: "Importer_Name", tableColumns: ["Importer_Name", "Exporter_Name", "Total_Value_in_USD"], chartFirst: true, chartType: "pie" },
 ];
 
 function extractRows(data) {

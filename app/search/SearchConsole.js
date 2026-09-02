@@ -165,8 +165,17 @@ const defaultGlobalSummary = {
   total_value_usd: 8642876888368.149,
 };
 const DEFAULT_PAGINATION_TOTAL = 1000;
+const globalMetrics = ["Quantity", "shipment_count", "Total_Value_in_USD"];
+const countryMetrics = [...globalMetrics, "Total_Value_in_INR", "Total_Value_in_VND"];
 
-function AggregationTable({ title, rows, loading, error, onRetry, offset, limit, total, onPrevious, onNext }) {
+function defaultDateRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - 1);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+function AggregationTable({ title, rows, loading, error, onRetry, offset, limit, total, onPrevious, onNext, companyField, onCompanySelect }) {
   const columns = Array.from(
     new Set(rows.flatMap((row) => (row && typeof row === "object" ? Object.keys(row) : []))),
   );
@@ -199,7 +208,7 @@ function AggregationTable({ title, rows, loading, error, onRetry, offset, limit,
         <div className="w-full overflow-auto">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead className="bg-white/90"><tr><th className="sticky left-0 z-10 border-b border-r border-blue-100 bg-blue-50 px-4 py-4 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-blue-500">#</th>{columns.map((column) => <th key={column} className="whitespace-nowrap border-b border-r border-blue-100 px-4 py-4 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-[#003466]">{column.replaceAll("_", " ")}</th>)}</tr></thead>
-            <tbody>{rows.map((row, index) => <tr key={index} className="group hover:bg-blue-50/60"><td className="sticky left-0 z-10 border-b border-r border-blue-50 bg-white px-4 py-3 font-mono text-xs font-bold text-blue-600 group-hover:bg-blue-50">{String(offset + index + 1).padStart(2, "0")}</td>{columns.map((column) => <td key={column} className="max-w-[280px] truncate border-b border-r border-blue-50 px-4 py-3 text-slate-700" title={displayValue(row[column])}>{displayValue(row[column])}</td>)}</tr>)}</tbody>
+            <tbody>{rows.map((row, index) => <tr key={index} className="group hover:bg-blue-50/60"><td className="sticky left-0 z-10 border-b border-r border-blue-50 bg-white px-4 py-3 font-mono text-xs font-bold text-blue-600 group-hover:bg-blue-50">{String(offset + index + 1).padStart(2, "0")}</td>{columns.map((column) => <td key={column} className="max-w-[280px] truncate border-b border-blue-50 px-4 py-3 text-slate-700" title={displayValue(row[column])}>{column.toLowerCase() === companyField.toLowerCase() && row[column] ? <button onClick={() => onCompanySelect(row[column], row)} className="max-w-full truncate text-left font-bold text-blue-700 underline-offset-2 hover:text-cyan-600 hover:underline">{displayValue(row[column])}</button> : displayValue(row[column])}</td>)}</tr>)}</tbody>
           </table>
         </div>
       )}
@@ -219,12 +228,13 @@ export default function SearchConsole({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const homeSearchRun = searchParams.get("run");
   const countries = ["India", "USA", "China", "Germany"];
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState(() => searchParams.get("suggestCountry") || "");
 
   const [showCountry, setShowCountry] = useState(false);
   const [searchType, setSearchType] = useState("hscode");
-  const [tradeType, setTradeType] = useState("export");
+  const [tradeType, setTradeType] = useState(() => searchParams.get("suggestTradeType") || "export");
   const columns = tradeType === "export" ? exportColumns : importColumns;
   const [query, setQuery] = useState(initialSuggestionQuery);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
@@ -254,10 +264,7 @@ export default function SearchConsole({
     })),
   );
 
-  const [dateRange, setDateRange] = useState({
-    start: "2025-08-28",
-    end: "2026-02-28",
-  });
+  const [dateRange, setDateRange] = useState(defaultDateRange);
   const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
@@ -311,6 +318,7 @@ export default function SearchConsole({
     tradeType,
   ]);
   const [visibleColumns, setVisibleColumns] = useState(columns);
+  const [columnDraft, setColumnDraft] = useState(columns);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [filterColumn, setFilterColumn] = useState(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -318,14 +326,44 @@ export default function SearchConsole({
   const [activeTab, setActiveTab] = useState("data");
   const [reportByGroup, setReportByGroup] = useState("");
   const [trendByGroup, setTrendByGroup] = useState("");
+  const [reportMetric, setReportMetric] = useState("Total_Value_in_USD");
+  const [trendMetric, setTrendMetric] = useState("Total_Value_in_USD");
   const [aggregationData, setAggregationData] = useState({
     importers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
     suppliers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
   });
+  const [countryChoices, setCountryChoices] = useState(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const initialSearchRequested = useRef(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = JSON.parse(window.sessionStorage.getItem("trade-search-workspace") || "null");
+        // A new search from Home takes precedence over the previous workspace.
+        if (saved && !homeSearchRun && !initialSuggestionQuery.trim()) {
+          setCountry(saved.country || ""); setTradeType(saved.tradeType || "export"); setQuery(saved.query || "");
+          setRows(Array.isArray(saved.rows) ? saved.rows : []); setSummary(saved.summary || defaultGlobalSummary);
+          setTotalRecords(saved.totalRecords || 0); setPageOffset(saved.pageOffset || 0); setPageSize(saved.pageSize || 25);
+          setDateRange(saved.dateRange || dateRange); setVisibleColumns(saved.visibleColumns || columns); setColumnFilters(saved.columnFilters || {});
+        }
+      } catch {} finally { setWorkspaceReady(true); }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  // Restore once per mounted search workspace.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceReady) return;
+    try { window.sessionStorage.setItem("trade-search-workspace", JSON.stringify({ country, tradeType, query, rows, summary, totalRecords, pageOffset, pageSize, dateRange, visibleColumns, columnFilters })); } catch {}
+  }, [columnFilters, country, dateRange, pageOffset, pageSize, query, rows, summary, totalRecords, tradeType, visibleColumns, workspaceReady]);
 
   const filterRef = useRef(null);
   const dropdownRef = useRef(null);
+  const calendarRef = useRef(null);
   const searchBoxRef = useRef(null);
+  const columnSelectorRef = useRef(null);
 
   const formatDate = (date) =>
   new Intl.DateTimeFormat("en-GB").format(new Date(date));
@@ -338,10 +376,22 @@ export default function SearchConsole({
       if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
         setShowSuggestions(false);
       }
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShowCountry(false);
+      if (calendarRef.current && !calendarRef.current.contains(e.target)) setShowCalendar(false);
+      if (columnSelectorRef.current && !columnSelectorRef.current.contains(e.target)) {
+        setShowColumnSelector(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const metricOptions = country ? countryMetrics : globalMetrics;
+
+  useEffect(() => {
+    if (!metricOptions.includes(reportMetric)) setReportMetric("Total_Value_in_USD");
+    if (!metricOptions.includes(trendMetric)) setTrendMetric("Total_Value_in_USD");
+  }, [country, metricOptions, reportMetric, trendMetric]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -355,6 +405,7 @@ export default function SearchConsole({
 
   useEffect(() => {
     setVisibleColumns(columns);
+    setColumnDraft(columns);
     setFilterColumn(null);
     setColumnFilters({});
   }, [columns, tradeType]);
@@ -374,10 +425,10 @@ export default function SearchConsole({
   }, []);
 
   function toggleColumn(col) {
-    if (visibleColumns.includes(col)) {
-      setVisibleColumns(visibleColumns.filter((c) => c !== col));
+    if (columnDraft.includes(col)) {
+      setColumnDraft(columnDraft.filter((c) => c !== col));
     } else {
-      setVisibleColumns([...visibleColumns, col]);
+      setColumnDraft([...columnDraft, col]);
     }
   }
 
@@ -609,7 +660,8 @@ export default function SearchConsole({
     if (includeAdvanced) {
       advancedRows.forEach((row) => {
         if (!row.field || !row.value.trim()) return;
-        filters[row.field] = row.value.trim();
+        const existing = filters[row.field];
+        filters[row.field] = existing ? [...(Array.isArray(existing) ? existing : [existing]), row.value.trim()] : row.value.trim();
         filters[`${row.field}_mode`] = row.mode;
       });
     }
@@ -627,7 +679,7 @@ export default function SearchConsole({
       }
 
       if (filter?.values?.length) {
-        filters[field] = filter.values.join(",");
+        filters[field] = filter.values;
         filters[`${field}_mode`] = "exact";
       }
     });
@@ -738,6 +790,41 @@ export default function SearchConsole({
   function handleTabChange(tab) {
     setActiveTab(tab);
     if (tab === "importers" || tab === "suppliers") loadAggregation(tab);
+  }
+
+  function tableCountry(tableName) {
+    return String(tableName || "").replace(/_(Import|Export)$/i, "");
+  }
+
+  function facetValues(data) {
+    return getFacetValues(data, "Table_Name")
+      .map((item) => typeof item === "string" ? item : item.value || item.key || item.name)
+      .filter(Boolean);
+  }
+
+  async function openCompanyProfile(name, row, role) {
+    const field = role === "importer" ? "Importer_Name" : "Exporter_Name";
+    const directTable = row?.Table_Name || row?.table_name;
+    const directCountry = directTable ? tableCountry(directTable) : country;
+    if (directCountry) {
+      router.push(`/search/company?name=${encodeURIComponent(name)}&role=${role}&country=${encodeURIComponent(directCountry)}`);
+      return;
+    }
+    try {
+      const response = await fetch("/api/trades/filters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ global: true, date_range: { from: dateRange.start, to: dateRange.end }, facets: ["Table_Name"], filters: { [field]: name, [`${field}_mode`]: "exact" }, include_counts: true }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Unable to identify the company country.");
+      const countries = [...new Set(facetValues(data).map(tableCountry).filter(Boolean))];
+      if (countries.length > 1) {
+        setCountryChoices({ name, role, countries });
+      } else {
+        router.push(`/search/company?name=${encodeURIComponent(name)}&role=${role}${countries[0] ? `&country=${encodeURIComponent(countries[0])}` : ""}`);
+      }
+    } catch {
+      // Country detection is a convenience for ambiguous global matches. Do not
+      // prevent access to the profile if the facet endpoint is unavailable.
+      router.push(`/search/company?name=${encodeURIComponent(name)}&role=${role}`);
+    }
   }
 
   async function fetchSummary(payload) {
@@ -933,6 +1020,17 @@ export default function SearchConsole({
       setIsLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!workspaceReady || initialSearchRequested.current || !initialSuggestionQuery.trim()) return;
+    const runKey = homeSearchRun ? `trade-search-run:${homeSearchRun}` : "";
+    if (runKey && window.sessionStorage.getItem(runKey)) return;
+    if (runKey) window.sessionStorage.setItem(runKey, "started");
+    initialSearchRequested.current = true;
+    handleSearch(true, 0, pageSize);
+  // The request is intentionally made only once for a Home-page handoff.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceReady, initialSuggestionQuery, homeSearchRun]);
 
   function changePage(nextOffset) {
     const safeOffset = Math.max(0, nextOffset);
@@ -1293,7 +1391,7 @@ export default function SearchConsole({
               )}
             </div>
 
-              <div className="relative">
+              <div ref={calendarRef} className="relative">
                 <button
                   onClick={() => setShowCalendar(!showCalendar)}
                   disabled={isLoading}
@@ -1475,7 +1573,7 @@ export default function SearchConsole({
             transition={{ duration: 0.2 }}
             className="w-full mb-6"
           >
-            <div className="relative bg-white/80 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-xl p-6">
+            <div ref={columnSelectorRef} className="relative bg-white/80 backdrop-blur-xl border border-blue-100 rounded-2xl shadow-xl p-6">
               {/* HEADER */}
               <div className="flex justify-between items-center mb-5">
                 <div>
@@ -1489,7 +1587,7 @@ export default function SearchConsole({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setVisibleColumns(columns)}
+                    onClick={() => setColumnDraft(columns)}
                     disabled={isLoading}
                     className="text-xs px-3 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
                   >
@@ -1497,7 +1595,7 @@ export default function SearchConsole({
                   </button>
 
                   <button
-                    onClick={() => setVisibleColumns([])}
+                    onClick={() => setColumnDraft([])}
                     disabled={isLoading}
                     className="text-xs px-3 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
                   >
@@ -1515,7 +1613,7 @@ export default function SearchConsole({
               {/* COLUMN GRID */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {columns.map((col) => {
-                  const active = visibleColumns.includes(col);
+                  const active = columnDraft.includes(col);
 
                   return (
                     <button
@@ -1542,6 +1640,7 @@ export default function SearchConsole({
                   );
                 })}
               </div>
+              <div className="mt-5 flex justify-end gap-3 border-t border-blue-100 pt-4"><button onClick={() => { setColumnDraft(visibleColumns); setShowColumnSelector(false); }} className="rounded-xl border border-blue-100 px-4 py-2 text-sm font-bold text-slate-600">Cancel</button><button onClick={() => { setVisibleColumns(columnDraft); setShowColumnSelector(false); }} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white">Update view</button></div>
             </div>
           </motion.div>
         )}
@@ -1550,7 +1649,7 @@ export default function SearchConsole({
       <div className="w-full flex flex-wrap justify-between items-center mb-6 gap-4 relative z-10">
         <div className="flex flex-wrap items-center gap-3 rounded-[24px] border border-white/80 bg-white/80 px-3 py-2 shadow-[0_18px_55px_rgba(0,52,102,0.12)] backdrop-blur-2xl">
           <button
-            onClick={() => setShowColumnSelector(!showColumnSelector)}
+            onClick={() => { setColumnDraft(visibleColumns); setShowColumnSelector(!showColumnSelector); }}
             disabled={isLoading}
             className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md"
           >
@@ -1650,10 +1749,12 @@ export default function SearchConsole({
                 if (tab.id === "report-by" || tab.id === "trend-by") {
                   const selectedGroup = tab.id === "report-by" ? reportByGroup : trendByGroup;
                   const setSelectedGroup = tab.id === "report-by" ? setReportByGroup : setTrendByGroup;
+                  const selectedMetric = tab.id === "report-by" ? reportMetric : trendMetric;
+                  const setSelectedMetric = tab.id === "report-by" ? setReportMetric : setTrendMetric;
                   return (
                     <div key={tab.id} className={`flex items-center gap-1 rounded-xl p-1 ${active ? "bg-blue-600 shadow-md shadow-blue-500/25" : "bg-white ring-1 ring-slate-200"}`}>
                       <button onClick={() => handleTabChange(tab.id)} className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${active ? "text-white" : "text-slate-600 hover:text-blue-700"}`}><Icon size={14} />{tab.label}</button>
-                      {active && <select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)} className="max-w-[150px] rounded-lg border-0 bg-white/95 px-2 py-2 text-xs font-bold text-[#003466] outline-none"><option value="">Select report</option>{reportByOptions.map(([label, field]) => <option key={field} value={field}>{label}</option>)}</select>}
+                      {active && <><select value={selectedGroup} onChange={(event) => setSelectedGroup(event.target.value)} className="max-w-[150px] rounded-lg border-0 bg-white/95 px-2 py-2 text-xs font-bold text-[#003466] outline-none"><option value="">Select report</option>{reportByOptions.map(([label, field]) => <option key={field} value={field}>{label}</option>)}</select><select value={selectedMetric} onChange={(event) => setSelectedMetric(event.target.value)} className="max-w-[180px] rounded-lg border-0 bg-white/95 px-2 py-2 text-xs font-bold text-[#003466] outline-none">{metricOptions.map((metric) => <option key={metric} value={metric}>{metric.replaceAll("_", " ")}</option>)}</select></>}
                     </div>
                   );
                 }
@@ -2033,9 +2134,9 @@ export default function SearchConsole({
           ) : activeTab === "visual-report" ? (
             <VisualReport requestBase={buildTrendPayload()} tradeType={tradeType} />
           ) : activeTab === "report-by" ? (
-            <ReportBy key={reportByGroup || "report-by"} requestBase={buildTrendPayload()} groupBy={reportByGroup} />
+            <ReportBy key={`${reportByGroup}-${reportMetric}`} requestBase={buildTrendPayload()} groupBy={reportByGroup} metric={reportMetric} />
           ) : activeTab === "trend-by" ? (
-            <ReportBy key={trendByGroup || "trend-by"} requestBase={buildTrendPayload()} groupBy={trendByGroup} />
+            <ReportBy key={`${trendByGroup}-${trendMetric}`} requestBase={buildTrendPayload()} groupBy={trendByGroup} metric={trendMetric} trend />
           ) : (activeTab === "importers" || activeTab === "suppliers") ? (
             <AggregationTable
               title={activeTab === "importers" ? "Importer List" : "Supplier List"}
@@ -2046,6 +2147,8 @@ export default function SearchConsole({
               offset={aggregationData[activeTab].offset}
               limit={aggregationData[activeTab].limit}
               total={aggregationData[activeTab].total}
+              companyField={activeTab === "importers" ? "Importer_Name" : "Exporter_Name"}
+              onCompanySelect={(name, row) => openCompanyProfile(name, row, activeTab === "importers" ? "importer" : "supplier")}
               onPrevious={() => loadAggregation(activeTab, Math.max(0, aggregationData[activeTab].offset - aggregationData[activeTab].limit))}
               onNext={() => loadAggregation(activeTab, aggregationData[activeTab].offset + aggregationData[activeTab].limit)}
             />
@@ -2072,6 +2175,14 @@ export default function SearchConsole({
       
       {/* ADVANCED SEARCH MODAL */}
       <AnimatePresence>
+        {countryChoices && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setCountryChoices(null)}>
+            <motion.div initial={{ y: 16, scale: 0.98 }} animate={{ y: 0, scale: 1 }} exit={{ y: 16, scale: 0.98 }} onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-blue-600">Company profile</p><h3 className="mt-1 text-xl font-black text-[#003466]">Choose a country</h3><p className="mt-2 text-sm text-slate-500">{countryChoices.name} appears in more than one country. Select the record you want to view.</p></div><button onClick={() => setCountryChoices(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X size={18} /></button></div>
+              <div className="mt-5 grid gap-2">{countryChoices.countries.map((choice) => <button key={choice} onClick={() => router.push(`/search/company?name=${encodeURIComponent(countryChoices.name)}&role=${countryChoices.role}&country=${encodeURIComponent(choice)}`)} className="flex items-center justify-between rounded-2xl border border-blue-100 px-4 py-3 text-left font-bold text-[#003466] transition hover:border-blue-300 hover:bg-blue-50"><span>{choice}</span><ArrowRight size={16} className="text-blue-600" /></button>)}</div>
+            </motion.div>
+          </motion.div>
+        )}
         {showAdvance && (
           <motion.div
             initial={{ opacity: 0 }}

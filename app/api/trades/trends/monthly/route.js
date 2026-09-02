@@ -15,7 +15,7 @@ export async function POST(request) {
   try {
 
     const payload = await request.json();
-    // console.log(payload)
+    console.log("[trades/trends/monthly] payload", JSON.stringify(payload));
     
     const response = await fetch(
       `${baseUrl.replace(/\/$/, "")}/api/v1/trades/trends/monthly`,
@@ -28,7 +28,9 @@ export async function POST(request) {
     );
 
     const text = await response.text();
-    return NextResponse.json(text ? JSON.parse(text) : {}, {
+    const data = text ? JSON.parse(text) : {};
+    // console.log("[trades/trends/monthly] response", response.status, JSON.stringify(data));
+    return NextResponse.json(data, {
       status: response.status,
     });
   } catch (error) {

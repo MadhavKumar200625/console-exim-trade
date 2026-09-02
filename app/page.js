@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Download,
   Search,
@@ -11,7 +12,11 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
+  const router = useRouter();
   const [showAdvance, setShowAdvance] = useState(false);
+  const [country, setCountry] = useState("");
+  const [tradeType, setTradeType] = useState("export");
+  const [query, setQuery] = useState("");
   const [dashboard, setDashboard] = useState({
     usage: {
       search: { used: 0, total: 0 },
@@ -38,6 +43,14 @@ export default function Dashboard() {
   const searchUsed = dashboard.usage?.search?.used || 0;
   const downloadPercent = downloadTotal ? Math.min(100, (downloadUsed / downloadTotal) * 100) : 0;
   const searchPercent = searchTotal ? Math.min(100, (searchUsed / searchTotal) * 100) : 0;
+  const startSearch = () => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("suggestQuery", query.trim());
+    if (country) params.set("suggestCountry", country);
+    params.set("suggestTradeType", tradeType);
+    params.set("run", String(Date.now()));
+    router.push(`/search${params.toString() ? `?${params}` : ""}`);
+  };
 
   return (
     <div className="min-h-screen bg-linear-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 lg:px-8 py-10 text-[#003466] relative overflow-hidden">
@@ -65,8 +78,7 @@ export default function Dashboard() {
       </motion.div>
 
       {/* 🔍 SEARCH SECTION */}
-      <motion.a
-      href = "/search"
+      <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
@@ -75,18 +87,17 @@ export default function Dashboard() {
         <div className="bg-linear-to-r from-white/90 to-white/70 backdrop-blur-xl border border-blue-100 rounded-2xl sm:rounded-full p-6 sm:p-5 shadow-lg">
           <div className="flex flex-col sm:flex-wrap sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-3">
             {/* Country Dropdown */}
-            <select className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
-              <option>Country</option>
+            <select value={country} onChange={(event) => setCountry(event.target.value)} className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
+              <option value="">Global</option>
               <option>India</option>
               <option>USA</option>
               <option>China</option>
             </select>
 
             {/* Data Type Dropdown */}
-            <select className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
-              <option>Select Data</option>
-              <option>Export</option>
-              <option>Import</option>
+            <select value={tradeType} onChange={(event) => setTradeType(event.target.value)} className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
+              <option value="export">Export</option>
+              <option value="import">Import</option>
             </select>
 
             {/* Search Input */}
@@ -94,6 +105,9 @@ export default function Dashboard() {
               <Search size={20} className="text-blue-500 mr-3" />
               <input
                 type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") startSearch(); }}
                 placeholder="Search products or HS code..."
                 className="flex-1 text-sm sm:text-base bg-transparent outline-none placeholder:text-gray-500"
               />
@@ -103,6 +117,7 @@ export default function Dashboard() {
             <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 justify-end">
               {/* Normal Search Button */}
               <motion.button
+                onClick={startSearch}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.97 }}
                 className="flex justify-center items-center gap-2 text-white text-sm sm:text-base px-5 py-3 bg-linear-to-r from-blue-600 to-blue-800 rounded-full shadow-md hover:shadow-lg transition-all"
@@ -122,7 +137,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </motion.a>
+      </motion.div>
 
       {/* STATS BAR */}
       <motion.div
