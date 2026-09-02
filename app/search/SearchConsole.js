@@ -340,8 +340,11 @@ export default function SearchConsole({
     const timer = window.setTimeout(() => {
       try {
         const saved = JSON.parse(window.sessionStorage.getItem("trade-search-workspace") || "null");
-        // A new search from Home takes precedence over the previous workspace.
-        if (saved && !homeSearchRun && !initialSuggestionQuery.trim()) {
+        const runKey = homeSearchRun ? `trade-search-run:${homeSearchRun}` : "";
+        const isFreshHomeSearch = Boolean(runKey && !window.sessionStorage.getItem(runKey));
+        // Only a freshly initiated Home search replaces the existing workspace.
+        // Reloading its URL restores the saved table instead of clearing it.
+        if (saved && !isFreshHomeSearch) {
           setCountry(saved.country || ""); setTradeType(saved.tradeType || "export"); setQuery(saved.query || "");
           setRows(Array.isArray(saved.rows) ? saved.rows : []); setSummary(saved.summary || defaultGlobalSummary);
           setTotalRecords(saved.totalRecords || 0); setPageOffset(saved.pageOffset || 0); setPageSize(saved.pageSize || 25);
