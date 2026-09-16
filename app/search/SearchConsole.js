@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -20,6 +20,7 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  ArrowUpRight,
   RefreshCw,
   Database,
   CheckCircle2,
@@ -175,6 +176,10 @@ function defaultDateRange() {
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
+function googleCompanyUrl(name) {
+  return `https://www.google.com/search?q=${encodeURIComponent(String(name || ""))}`;
+}
+
 function AggregationTable({ title, rows, loading, error, onRetry, offset, limit, total, onPrevious, onNext, companyField, onCompanySelect }) {
   const columns = Array.from(
     new Set(rows.flatMap((row) => (row && typeof row === "object" ? Object.keys(row) : []))),
@@ -208,7 +213,7 @@ function AggregationTable({ title, rows, loading, error, onRetry, offset, limit,
         <div className="w-full overflow-auto">
           <table className="min-w-full border-separate border-spacing-0 text-sm">
             <thead className="bg-white/90"><tr><th className="sticky left-0 z-10 border-b border-r border-blue-100 bg-blue-50 px-4 py-4 text-left text-[10px] font-bold uppercase tracking-[0.18em] text-blue-500">#</th>{columns.map((column) => <th key={column} className="whitespace-nowrap border-b border-r border-blue-100 px-4 py-4 text-left text-[11px] font-bold uppercase tracking-[0.08em] text-[#003466]">{column.replaceAll("_", " ")}</th>)}</tr></thead>
-            <tbody>{rows.map((row, index) => <tr key={index} className="group hover:bg-blue-50/60"><td className="sticky left-0 z-10 border-b border-r border-blue-50 bg-white px-4 py-3 font-mono text-xs font-bold text-blue-600 group-hover:bg-blue-50">{String(offset + index + 1).padStart(2, "0")}</td>{columns.map((column) => <td key={column} className="max-w-[280px] truncate border-b border-blue-50 px-4 py-3 text-slate-700" title={displayValue(row[column])}>{column.toLowerCase() === companyField.toLowerCase() && row[column] ? <button onClick={() => onCompanySelect(row[column], row)} className="max-w-full truncate text-left font-bold text-blue-700 underline-offset-2 hover:text-cyan-600 hover:underline">{displayValue(row[column])}</button> : displayValue(row[column])}</td>)}</tr>)}</tbody>
+            <tbody>{rows.map((row, index) => <tr key={index} className="group hover:bg-blue-50/60"><td className="sticky left-0 z-10 border-b border-r border-blue-50 bg-white px-4 py-3 font-mono text-xs font-bold text-blue-600 group-hover:bg-blue-50">{String(offset + index + 1).padStart(2, "0")}</td>{columns.map((column) => <td key={column} className="max-w-[280px] truncate border-b border-blue-50 px-4 py-3 text-slate-700" title={displayValue(row[column])}>{column.toLowerCase() === companyField.toLowerCase() && row[column] ? <button onClick={() => onCompanySelect(row[column], row)} className="inline-flex max-w-full items-center gap-1 truncate text-left font-bold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-cyan-600 hover:decoration-cyan-500">{displayValue(row[column])}<ArrowUpRight size={13} aria-hidden="true" /></button> : displayValue(row[column])}</td>)}</tr>)}</tbody>
           </table>
         </div>
       )}
@@ -335,6 +340,7 @@ export default function SearchConsole({
   const [countryChoices, setCountryChoices] = useState(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const initialSearchRequested = useRef(false);
+  const availableColumns = useMemo(() => country ? columns : columns.filter((column) => column !== "Country"), [country, columns]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -348,7 +354,7 @@ export default function SearchConsole({
           setCountry(saved.country || ""); setTradeType(saved.tradeType || "export"); setQuery(saved.query || "");
           setRows(Array.isArray(saved.rows) ? saved.rows : []); setSummary(saved.summary || defaultGlobalSummary);
           setTotalRecords(saved.totalRecords || 0); setPageOffset(saved.pageOffset || 0); setPageSize(saved.pageSize || 25);
-          setDateRange(saved.dateRange || dateRange); setVisibleColumns(saved.visibleColumns || columns); setColumnFilters(saved.columnFilters || {});
+          setDateRange(saved.dateRange || dateRange); setVisibleColumns((saved.visibleColumns || columns).filter((column) => saved.country || column !== "Country")); setColumnFilters(saved.columnFilters || {});
         }
       } catch {} finally { setWorkspaceReady(true); }
     }, 0);
@@ -407,11 +413,11 @@ export default function SearchConsole({
   }, [toast]);
 
   useEffect(() => {
-    setVisibleColumns(columns);
-    setColumnDraft(columns);
+    setVisibleColumns(availableColumns);
+    setColumnDraft(availableColumns);
     setFilterColumn(null);
     setColumnFilters({});
-  }, [columns, tradeType]);
+  }, [availableColumns, columns, tradeType]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -1186,9 +1192,10 @@ export default function SearchConsole({
             {String(value).slice(0, 1)}
           </div>
           <div>
-            <p className="max-w-[210px] truncate font-semibold text-slate-800">
+            <a href={googleCompanyUrl(value)} target="_blank" rel="noreferrer" className="inline-flex max-w-[210px] items-center gap-1 truncate font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-cyan-600 hover:decoration-cyan-500">
               {value}
-            </p>
+              <ArrowUpRight size={13} aria-hidden="true" />
+            </a>
             <p className="text-[11px] text-slate-400">
               {col === "Exporter_Name" ? "Seller node" : "Buyer node"}
             </p>
@@ -1590,7 +1597,7 @@ export default function SearchConsole({
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setColumnDraft(columns)}
+                    onClick={() => setColumnDraft(availableColumns)}
                     disabled={isLoading}
                     className="text-xs px-3 py-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
                   >
@@ -1615,7 +1622,7 @@ export default function SearchConsole({
 
               {/* COLUMN GRID */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {columns.map((col) => {
+                {availableColumns.map((col) => {
                   const active = columnDraft.includes(col);
 
                   return (
