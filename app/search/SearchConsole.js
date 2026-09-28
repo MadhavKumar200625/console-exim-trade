@@ -240,7 +240,28 @@ export default function SearchConsole({
   const [showCountry, setShowCountry] = useState(false);
   const [searchType, setSearchType] = useState("hscode");
   const [tradeType, setTradeType] = useState(() => searchParams.get("suggestTradeType") || "export");
+  const isGlobalSearch = !country;
   const columns = tradeType === "export" ? exportColumns : importColumns;
+  const globalAwareColumns = useMemo(() => {
+    if (!isGlobalSearch) return columns;
+
+    const ordered = columns.filter(
+      (column) => column !== "Country" && column !== "Import_Country" && column !== "Export_Country",
+    );
+
+    const importerIndex = ordered.findIndex((column) => column === "Importer_ID");
+    if (importerIndex !== -1) {
+      ordered.splice(importerIndex, 0, "Import_Country");
+    }
+
+    const exporterIndex = ordered.findIndex((column) => column === "Exporter_ID");
+    if (exporterIndex !== -1) {
+      ordered.splice(exporterIndex, 0, "Export_Country");
+    }
+
+    return ordered;
+  }, [columns, isGlobalSearch]);
+  const activeColumns = isGlobalSearch ? globalAwareColumns : columns;
   const [query, setQuery] = useState(initialSuggestionQuery);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -322,8 +343,8 @@ export default function SearchConsole({
     searchType,
     tradeType,
   ]);
-  const [visibleColumns, setVisibleColumns] = useState(columns);
-  const [columnDraft, setColumnDraft] = useState(columns);
+  const [visibleColumns, setVisibleColumns] = useState(activeColumns);
+  const [columnDraft, setColumnDraft] = useState(activeColumns);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [filterColumn, setFilterColumn] = useState(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -340,7 +361,14 @@ export default function SearchConsole({
   const [countryChoices, setCountryChoices] = useState(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const initialSearchRequested = useRef(false);
-  const availableColumns = useMemo(() => country ? columns : columns.filter((column) => column !== "Country"), [country, columns]);
+  const availableColumns = useMemo(
+    () => (
+      isGlobalSearch
+        ? globalAwareColumns
+        : columns.filter((column) => column !== "Country")
+    ),
+    [columns, globalAwareColumns, isGlobalSearch],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -455,7 +483,7 @@ export default function SearchConsole({
 
   function normalizeApiRows(apiRows) {
     return apiRows.map((item) =>
-      columns.reduce((acc, column) => {
+      activeColumns.reduce((acc, column) => {
         const apiKey = apiColumnMap[column];
         acc[column] =
           item?.[apiKey] ??
@@ -702,7 +730,7 @@ export default function SearchConsole({
         from: dateRange.start,
         to: dateRange.end,
       },
-      columns: columns.map((column) => getApiField(column)),
+      columns: activeColumns.map((column) => getApiField(column)),
       filters: buildFilters(includeAdvanced),
       sort: {
         field: "Date",
@@ -1317,7 +1345,7 @@ export default function SearchConsole({
                 <button
                   key={item.id}
                   onClick={() => setSearchType(item.id)}
-                  className={`rounded-xl px-4 py-2 transition ${
+                  className={`cursor-pointer rounded-xl px-4 py-2 transition ${
                     searchType === item.id
                       ? "bg-white text-blue-700 shadow-sm"
                       : "text-slate-500 hover:text-blue-700"
@@ -1328,7 +1356,7 @@ export default function SearchConsole({
               ))}
               <button
                 onClick={() => setShowAdvance(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-slate-500 transition hover:bg-white hover:text-blue-700"
+                className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2 text-slate-500 transition hover:bg-white hover:text-blue-700"
               >
                 <SlidersHorizontal size={15} />
                 Advanced
@@ -1346,7 +1374,7 @@ export default function SearchConsole({
                   key={item.id}
                   onClick={() => setTradeType(item.id)}
                   disabled={isLoading}
-                  className={`rounded-xl px-5 py-3 text-sm font-bold transition ${
+                  className={`cursor-pointer rounded-xl px-5 py-3 text-sm font-bold transition ${
                     tradeType === item.id
                       ? "bg-white text-[#031c35] shadow-sm"
                       : "text-blue-100 hover:bg-white/10"
@@ -1364,7 +1392,7 @@ export default function SearchConsole({
                   setShowCountry((prev) => !prev);
                 }}
                 disabled={isLoading}
-                className="flex h-14 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 text-sm shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                className="flex h-14 cursor-pointer items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 text-sm shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
               >
                 <span className="h-2.5 w-2.5 rounded-full bg-blue-500"></span>
                 <span className="font-bold text-[#003466]">{country || "Global"}</span>
@@ -1392,7 +1420,7 @@ export default function SearchConsole({
                         setCountry(c);
                         setShowCountry(false);
                       }}
-                      className="block w-full px-4 py-3 text-left text-sm font-semibold transition hover:bg-blue-50"
+                      className="block w-full cursor-pointer px-4 py-3 text-left text-sm font-semibold transition hover:bg-blue-50"
                     >
                       {c || "Global"}
                     </button>
@@ -1405,7 +1433,7 @@ export default function SearchConsole({
                 <button
                   onClick={() => setShowCalendar(!showCalendar)}
                   disabled={isLoading}
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                  className="flex h-14 w-14 cursor-pointer items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
                 >
                   <Calendar size={18} />
                 </button>
@@ -1489,7 +1517,7 @@ export default function SearchConsole({
                 <button
                   onClick={() => handleSearch(false, 0, pageSize)}
                   disabled={isLoading}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-60"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-700/25 transition hover:scale-[1.02] disabled:cursor-wait disabled:opacity-60"
                 >
                   {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
                   Search
@@ -1661,7 +1689,7 @@ export default function SearchConsole({
           <button
             onClick={() => { setColumnDraft(visibleColumns); setShowColumnSelector(!showColumnSelector); }}
             disabled={isLoading}
-            className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md"
+            className="flex cursor-pointer items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md"
           >
             <SlidersHorizontal size={16} />
             Columns
@@ -1670,7 +1698,7 @@ export default function SearchConsole({
           <button
             onClick={handleSaveTable}
             disabled={isLoading || isSaving}
-            className="flex items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
+            className="flex cursor-pointer items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
           >
             {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
             {isSaving ? "Saving" : "Save Table"}
@@ -1689,7 +1717,7 @@ export default function SearchConsole({
           <button
             onClick={() => setFullscreen(!fullscreen)}
             disabled={isLoading}
-            className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-white px-5 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md"
+            className="flex cursor-pointer items-center gap-2 rounded-2xl border border-blue-200 bg-white px-5 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-50 hover:shadow-md"
           >
             <Expand size={16} />
             {fullscreen ? "Exit Fullscreen" : "Expand"}
