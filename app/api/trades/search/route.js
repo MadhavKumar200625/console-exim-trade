@@ -15,6 +15,11 @@ export async function POST(request) {
   const baseUrl =
     process.env.TRADES_API_BASE_URL ||
     process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
+  const endpoint = baseUrl
+    ? `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`
+    : "/api/v1/trades/search (TRADES_API_BASE_URL not configured)";
+
+  console.info("[trades/search] request", JSON.stringify({ endpoint, payload }));
 
   if (!baseUrl) {
     await logSearch(session.masterId, session.userId, payload, payload.Table_Name || "global");
@@ -23,7 +28,7 @@ export async function POST(request) {
 
   try {
     const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`,
+      endpoint,
       {
         method: "POST",
         headers: {

@@ -30,9 +30,11 @@ import {
   FileBarChart,
   TrendingUp,
 } from "lucide-react";
-import { MATCH_MODES, SEARCH_FIELDS, labelForField } from "./searchConfig";
+import { labelForField } from "./searchConfig";
+import AdvancedSearchFields, { createAdvancedRow } from "./AdvancedSearchFields";
 import VisualReport from "@/components/visual-report/VisualReport";
 import ReportBy, { reportByOptions } from "@/components/report-by/ReportBy";
+import { COUNTRIES } from "./countries";
 
 const exportColumns = [
   "Date",
@@ -234,11 +236,13 @@ export default function SearchConsole({
   const router = useRouter();
   const searchParams = useSearchParams();
   const homeSearchRun = searchParams.get("run");
-  const countries = ["India", "USA", "China", "Germany"];
+  const homeAdvancedFilters = searchParams.get("advancedFilters") || "";
   const [country, setCountry] = useState(() => searchParams.get("suggestCountry") || "");
 
   const [showCountry, setShowCountry] = useState(false);
-  const [searchType, setSearchType] = useState("hscode");
+  const [countrySearch, setCountrySearch] = useState("");
+  const filteredCountries = COUNTRIES.filter((name) => name.toLowerCase().includes(countrySearch.trim().toLowerCase()));
+  const [searchType, setSearchType] = useState(() => searchParams.get("suggestType") || "hscode");
   const [tradeType, setTradeType] = useState(() => searchParams.get("suggestTradeType") || "export");
   const isGlobalSearch = !country;
   const columns = tradeType === "export" ? exportColumns : importColumns;
@@ -281,14 +285,18 @@ export default function SearchConsole({
   const [filterQueries, setFilterQueries] = useState({});
   const [filterLoading, setFilterLoading] = useState(null);
   const [filterErrors, setFilterErrors] = useState({});
-  const [advancedRows, setAdvancedRows] = useState(
-    SEARCH_FIELDS.map((field) => ({
-      operator: "AND",
-      field,
-      mode: field === "HS_Code" ? "prefix" : "contains",
-      value: "",
-    })),
-  );
+  const [advancedRows, setAdvancedRows] = useState(() => {
+    try {
+      const rows = JSON.parse(searchParams.get("advancedFilters") || "[]");
+      if (!Array.isArray(rows)) return [];
+      const seen = new Set();
+      return rows
+        .filter((row) => row?.field && row?.value?.trim() && !seen.has(row.field) && seen.add(row.field))
+        .map((row) => ({ ...row, id: createAdvancedRow().id }));
+    } catch {
+      return [];
+    }
+  });
 
   const [dateRange, setDateRange] = useState(defaultDateRange);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -473,22 +481,17 @@ export default function SearchConsole({
     return date.toISOString().slice(0, 10);
   }
 
-  function updateAdvancedRow(index, key, value) {
-    setAdvancedRows((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, [key]: value } : item,
-      ),
-    );
-  }
-
   function normalizeApiRows(apiRows) {
     return apiRows.map((item) =>
       activeColumns.reduce((acc, column) => {
         const apiKey = apiColumnMap[column];
-        acc[column] =
+        const value =
           item?.[apiKey] ??
           item?.[column] ??
           (column === "Country" ? country || "Global" : "");
+        acc[column] = typeof value === "number" && !Number.isInteger(value)
+          ? Number(value.toFixed(2))
+          : value;
         return acc;
       }, {}),
     );
@@ -696,10 +699,11 @@ export default function SearchConsole({
 
     if (includeAdvanced) {
       advancedRows.forEach((row) => {
-        if (!row.field || !row.value.trim()) return;
+        if (!row.field || !row.value?.trim()) return;
         const existing = filters[row.field];
         filters[row.field] = existing ? [...(Array.isArray(existing) ? existing : [existing]), row.value.trim()] : row.value.trim();
         filters[`${row.field}_mode`] = row.mode;
+        filters[`${row.field}_operator`] = row.operator || "AND";
       });
     }
 
@@ -1059,15 +1063,13 @@ export default function SearchConsole({
   }
 
   useEffect(() => {
-    if (!workspaceReady || initialSearchRequested.current || !initialSuggestionQuery.trim()) return;
-    const runKey = homeSearchRun ? `trade-search-run:${homeSearchRun}` : "";
-    if (runKey && window.sessionStorage.getItem(runKey)) return;
-    if (runKey) window.sessionStorage.setItem(runKey, "started");
+    if (!workspaceReady || initialSearchRequested.current || (!initialSuggestionQuery.trim() && !homeAdvancedFilters)) return;
+    if (homeSearchRun) window.sessionStorage.setItem(`trade-search-run:${homeSearchRun}`, "started");
     initialSearchRequested.current = true;
     handleSearch(true, 0, pageSize);
   // The request is intentionally made only once for a Home-page handoff.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceReady, initialSuggestionQuery, homeSearchRun]);
+  }, [workspaceReady, initialSuggestionQuery, homeAdvancedFilters, homeSearchRun]);
 
   function changePage(nextOffset) {
     const safeOffset = Math.max(0, nextOffset);
@@ -1093,7 +1095,10 @@ export default function SearchConsole({
   const pageEnd = Math.min(pageOffset + rows.length, totalRecords);
 
   function formatNumber(value, options = {}) {
-    return Number(value || 0).toLocaleString(undefined, options);
+    return Number(value || 0).toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+      ...options,
+    });
   }
 
   function formatUsdValue(value) {
@@ -1104,7 +1109,7 @@ export default function SearchConsole({
       })}M`;
     }
 
-    return `$${number.toLocaleString(undefined, { maximumFractionDigits: 3 })}`;
+    return `$${number.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
   }
 
   function getNumericRange(column) {
@@ -1178,7 +1183,7 @@ export default function SearchConsole({
         value: Number(
           summary?.total_quantity ||
             rows.reduce((sum, row) => sum + (Number(row["Quantity"]) || 0), 0),
-        ).toLocaleString(undefined, { maximumFractionDigits: 3 }),
+            ).toLocaleString(undefined, { maximumFractionDigits: 2 }),
       },
       {
         label: "Total Value USD",
@@ -1253,7 +1258,7 @@ export default function SearchConsole({
         <div className="min-w-[160px]">
           <div className="flex items-center justify-between gap-3">
             <span className="font-mono text-xs font-semibold text-slate-700">
-              {numericValue.toLocaleString()}
+              {numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </span>
             <span className="text-[10px] uppercase text-slate-400">
               {col.includes("Value") ? "USD" : "Units"}
@@ -1277,7 +1282,10 @@ export default function SearchConsole({
       );
     }
 
-    return <span className="text-slate-700">{value}</span>;
+    const numericValue = typeof value === "number" || (typeof value === "string" && value.trim() !== "")
+      ? Number(value)
+      : NaN;
+    return <span className="text-slate-700">{Number.isFinite(numericValue) ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value}</span>;
   }
 
   return (
@@ -1390,6 +1398,7 @@ export default function SearchConsole({
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowCountry((prev) => !prev);
+                  setCountrySearch("");
                 }}
                 disabled={isLoading}
                 className="flex h-14 cursor-pointer items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 text-sm shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
@@ -1403,9 +1412,9 @@ export default function SearchConsole({
               </button>
 
               {showCountry && (
-                <div className="absolute top-16 left-0 z-[9999] w-48 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                <div className="absolute top-16 left-0 z-[9999] w-64 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
                   <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-3">
-                    <span className="text-xs font-bold text-[#003466]">Country</span>
+                    <span className="text-xs font-bold text-[#003466]">Choose country</span>
                     <button
                       onClick={() => setShowCountry(false)}
                       className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-500 hover:text-blue-700"
@@ -1413,18 +1422,18 @@ export default function SearchConsole({
                       <X size={14} />
                     </button>
                   </div>
-                  {["", ...countries].map((c) => (
-                    <button
-                      key={c || "global"}
-                      onClick={() => {
-                        setCountry(c);
-                        setShowCountry(false);
-                      }}
-                      className="block w-full cursor-pointer px-4 py-3 text-left text-sm font-semibold transition hover:bg-blue-50"
-                    >
-                      {c || "Global"}
-                    </button>
-                  ))}
+                  <div className="border-b border-blue-100 p-3">
+                    <div className="flex items-center gap-2 rounded-xl border border-blue-100 bg-white px-3 focus-within:ring-2 focus-within:ring-blue-300">
+                      <Search size={15} className="shrink-0 text-slate-400" />
+                      <input autoFocus value={countrySearch} onChange={(event) => setCountrySearch(event.target.value)} placeholder="Search countries" aria-label="Search countries" className="h-10 min-w-0 flex-1 bg-transparent text-sm text-[#003466] outline-none placeholder:text-slate-400" />
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto p-1">
+                    <button onClick={() => { setCountry(""); setShowCountry(false); }} className={`block w-full cursor-pointer rounded-xl px-3 py-2.5 text-left text-sm font-bold transition hover:bg-blue-50 ${!country ? "bg-blue-50 text-blue-700" : "text-[#003466]"}`}>Global</button>
+                    {filteredCountries.length ? filteredCountries.map((c) => (
+                      <button key={c} onClick={() => { setCountry(c); setShowCountry(false); }} className={`block w-full cursor-pointer rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition hover:bg-blue-50 ${country === c ? "bg-blue-50 text-blue-700" : "text-slate-700"}`}>{c}</button>
+                    )) : <p className="px-3 py-6 text-center text-sm text-slate-400">No countries found</p>}
+                  </div>
                 </div>
               )}
             </div>
@@ -2221,6 +2230,7 @@ export default function SearchConsole({
             </motion.div>
           </motion.div>
         )}
+        {/* Legacy advanced-search menu retained for reference.
         {showAdvance && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -2345,6 +2355,24 @@ export default function SearchConsole({
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+        */}
+        {showAdvance && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowAdvance(false)}>
+            <motion.section initial={{ scale: 0.96, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 12 }} onClick={(event) => event.stopPropagation()} className="max-h-[88vh] w-full max-w-4xl overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5 sm:px-8">
+                <div><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#031c35] text-cyan-200"><SlidersHorizontal size={18} /></span><h2 className="text-xl font-black text-[#003466]">Advanced Search</h2></div><p className="mt-2 text-sm text-slate-500">Add fields and choose how each condition connects.</p></div>
+                <button onClick={() => setShowAdvance(false)} aria-label="Close advanced search" className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-white text-slate-500 hover:bg-blue-50"><X size={19} /></button>
+              </div>
+              <div className="max-h-[calc(88vh-150px)] space-y-5 overflow-auto px-6 py-6 sm:px-8">
+                <AdvancedSearchFields rows={advancedRows} onChange={setAdvancedRows} />
+                <div className="flex justify-end gap-3 border-t border-blue-100 pt-5">
+                  <button onClick={() => setShowAdvance(false)} className="rounded-xl border border-blue-100 px-5 py-3 text-sm font-bold text-slate-600 hover:bg-blue-50">Cancel</button>
+                  <button onClick={() => { setShowAdvance(false); handleSearch(true); }} disabled={isLoading} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-60">{isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />} {isLoading ? "Loading" : "Search"}</button>
+                </div>
+              </div>
+            </motion.section>
           </motion.div>
         )}
       </AnimatePresence>

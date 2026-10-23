@@ -7,7 +7,7 @@ export const reportByOptions = [["Export Country", "Export_Country"], ["Supplier
 function rowsFrom(data) { if (Array.isArray(data)) return data; for (const key of ["data", "results", "rows", "items", "records"]) if (Array.isArray(data?.[key])) return data[key]; return data?.data && typeof data.data === "object" ? rowsFrom(data.data) : []; }
 function dim(row, field) { return row?.[field] ?? row?.[field.toLowerCase()] ?? row?.dim ?? row?.dimension ?? "-"; }
 function metricValue(row, metric) { return row?.[metric] ?? row?.[metric.toLowerCase()] ?? row?.value ?? row?.metric_value ?? row?.shipment_count ?? 0; }
-function show(value) { return value === null || value === undefined || value === "" ? "-" : String(value); }
+function show(value) { if (value === null || value === undefined || value === "") return "-"; const number = Number(value); return Number.isFinite(number) && (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) ? number.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(value); }
 function rawMonth(row) { return row?.month ?? row?.Month ?? row?.period ?? row?.date ?? ""; }
 function monthKey(value) { const match = String(value).match(/^(\d{4})-(\d{1,2})/); return match ? `${match[1]}-${String(match[2]).padStart(2, "0")}` : String(value); }
 function monthLabel(key) { const match = String(key).match(/^(\d{4})-(\d{2})$/); return match ? `${match[2]}/${match[1]}` : key || "-"; }

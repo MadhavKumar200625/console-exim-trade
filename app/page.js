@@ -7,9 +7,11 @@ import {
   Download,
   Search,
   User,
-  ArrowRight,
   X,
+  SlidersHorizontal,
 } from "lucide-react";
+import AdvancedSearchFields from "./search/AdvancedSearchFields";
+import { COUNTRIES } from "./search/countries";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -17,6 +19,8 @@ export default function Dashboard() {
   const [country, setCountry] = useState("");
   const [tradeType, setTradeType] = useState("export");
   const [query, setQuery] = useState("");
+  const [searchType, setSearchType] = useState("hscode");
+  const [advancedRows, setAdvancedRows] = useState([]);
   const [dashboard, setDashboard] = useState({
     usage: {
       search: { used: 0, total: 0 },
@@ -43,11 +47,16 @@ export default function Dashboard() {
   const searchUsed = dashboard.usage?.search?.used || 0;
   const downloadPercent = downloadTotal ? Math.min(100, (downloadUsed / downloadTotal) * 100) : 0;
   const searchPercent = searchTotal ? Math.min(100, (searchUsed / searchTotal) * 100) : 0;
-  const startSearch = () => {
+  const startSearch = (includeAdvanced = false) => {
     const params = new URLSearchParams();
     if (query.trim()) params.set("suggestQuery", query.trim());
+    params.set("suggestType", searchType);
     if (country) params.set("suggestCountry", country);
     params.set("suggestTradeType", tradeType);
+    if (includeAdvanced) {
+      const filters = advancedRows.filter((row) => row.field && row.value.trim());
+      if (filters.length) params.set("advancedFilters", JSON.stringify(filters));
+    }
     params.set("run", String(Date.now()));
     router.push(`/search${params.toString() ? `?${params}` : ""}`);
   };
@@ -84,57 +93,30 @@ export default function Dashboard() {
         transition={{ duration: 0.8 }}
         className="relative max-w-7xl mx-auto mt-8 px-2"
       >
-        <div className="bg-linear-to-r from-white/90 to-white/70 backdrop-blur-xl border border-blue-100 rounded-2xl sm:rounded-full p-6 sm:p-5 shadow-lg">
-          <div className="flex flex-col sm:flex-wrap sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-3">
-            {/* Country Dropdown */}
-            <select value={country} onChange={(event) => setCountry(event.target.value)} className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
+        <div className="rounded-[28px] border border-blue-100 bg-white/90 p-4 shadow-[0_18px_45px_rgba(0,52,102,0.10)] backdrop-blur-xl sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
+              {[{ id: "import", label: "Imports" }, { id: "export", label: "Exports" }].map((item) => (
+                <button key={item.id} onClick={() => setTradeType(item.id)} className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${tradeType === item.id ? "bg-white text-[#031c35] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}>{item.label}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 rounded-2xl bg-blue-50/70 p-1 text-sm font-semibold shadow-inner">
+              {[{ id: "hscode", label: "HS / Product" }, { id: "industry", label: "Company" }].map((item) => (
+                <button key={item.id} onClick={() => setSearchType(item.id)} className={`rounded-xl px-4 py-2 transition ${searchType === item.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-blue-700"}`}>{item.label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-[minmax(150px,220px)_minmax(0,1fr)_auto_auto] xl:items-center">
+            <select value={country} onChange={(event) => setCountry(event.target.value)} aria-label="Country" className="h-14 rounded-2xl border border-blue-100 bg-white px-4 text-sm font-bold text-[#003466] outline-none focus:ring-2 focus:ring-blue-400">
               <option value="">Global</option>
-              <option>India</option>
-              <option>USA</option>
-              <option>China</option>
+              {COUNTRIES.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
-
-            {/* Data Type Dropdown */}
-            <select value={tradeType} onChange={(event) => setTradeType(event.target.value)} className="w-full sm:w-44 md:w-48 px-5 py-3 rounded-full border border-gray-200 bg-white/80 text-sm sm:text-base focus:ring-2 focus:ring-blue-400 transition-all">
-              <option value="export">Export</option>
-              <option value="import">Import</option>
-            </select>
-
-            {/* Search Input */}
-            <div className="flex items-center flex-1 w-full sm:min-w-[280px] border border-gray-200 rounded-full px-4 py-3 bg-white/80 focus-within:ring-2 focus-within:ring-blue-400 transition-all">
-              <Search size={20} className="text-blue-500 mr-3" />
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") startSearch(); }}
-                placeholder="Search products or HS code..."
-                className="flex-1 text-sm sm:text-base bg-transparent outline-none placeholder:text-gray-500"
-              />
+            <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 shadow-sm focus-within:ring-2 focus-within:ring-blue-400">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 text-white"><Search size={18} /></span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") startSearch(); }} placeholder={searchType === "industry" ? "Search company, importer, or exporter" : "Search HS code, product ..."} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#003466] outline-none placeholder:text-slate-400 sm:text-base" />
             </div>
-
-            {/* Buttons */}
-            <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 justify-end">
-              {/* Normal Search Button */}
-              <motion.button
-                onClick={startSearch}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                className="flex justify-center items-center gap-2 text-white text-sm sm:text-base px-5 py-3 bg-linear-to-r from-blue-600 to-blue-800 rounded-full shadow-md hover:shadow-lg transition-all"
-              >
-                <Search size={18} /> Search
-              </motion.button>
-
-              {/* Advanced Search Button */}
-              <motion.button
-                onClick={() => setShowAdvance(true)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.97 }}
-                className="flex justify-center items-center gap-2 text-blue-700 border border-blue-300 bg-white/70 text-sm sm:text-base px-5 py-3 rounded-full shadow-sm hover:bg-blue-50 transition-all"
-              >
-                Advanced Search <ArrowRight size={18} />
-              </motion.button>
-            </div>
+            <button onClick={() => setShowAdvance(true)} className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-blue-100 bg-white px-5 text-sm font-bold text-blue-700 shadow-sm transition hover:bg-blue-50"><SlidersHorizontal size={17} />Advanced</button>
+            <button onClick={() => startSearch()} className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 text-sm font-bold text-white shadow-lg shadow-blue-700/20 transition hover:scale-[1.02]"><Search size={17} />Search</button>
           </div>
         </div>
       </motion.div>
@@ -254,7 +236,7 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      {/* ADVANCED SEARCH MODAL */}
+      {/* Legacy home advanced-search modal retained for reference.
       <AnimatePresence>
         {showAdvance && (
           <motion.div
@@ -312,6 +294,27 @@ export default function Dashboard() {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      */}
+
+      <AnimatePresence>
+        {showAdvance && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowAdvance(false)}>
+            <motion.section initial={{ scale: 0.96, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 12 }} onClick={(event) => event.stopPropagation()} className="max-h-[88vh] w-full max-w-4xl overflow-hidden rounded-[28px] border border-blue-100 bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-cyan-50 px-6 py-5 sm:px-8">
+                <div><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#031c35] text-cyan-200"><SlidersHorizontal size={18} /></span><h2 className="text-xl font-black text-[#003466]">Advanced Search</h2></div><p className="mt-2 text-sm text-slate-500">Add fields and choose how each condition connects.</p></div>
+                <button onClick={() => setShowAdvance(false)} aria-label="Close advanced search" className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-white text-slate-500 hover:bg-blue-50"><X size={19} /></button>
+              </div>
+              <div className="max-h-[calc(88vh-150px)] space-y-5 overflow-auto px-6 py-6 sm:px-8">
+                <AdvancedSearchFields rows={advancedRows} onChange={setAdvancedRows} />
+                <div className="flex justify-end gap-3 border-t border-blue-100 pt-5">
+                  <button onClick={() => setShowAdvance(false)} className="rounded-xl border border-blue-100 px-5 py-3 text-sm font-bold text-slate-600 hover:bg-blue-50">Cancel</button>
+                  <button onClick={() => startSearch(true)} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-3 text-sm font-bold text-white shadow-lg"><Search size={16} />Search</button>
+                </div>
+              </div>
+            </motion.section>
           </motion.div>
         )}
       </AnimatePresence>

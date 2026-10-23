@@ -24,9 +24,9 @@ function formatValue(key, value) {
 
   if (Number.isFinite(numericValue)) {
     if (/value|amount|price|usd|inr|fob|tax|duty/i.test(key)) {
-      return `$${numericValue.toLocaleString()}`;
+      return `$${numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
     }
-    return numericValue.toLocaleString();
+    return numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
   return String(value);
