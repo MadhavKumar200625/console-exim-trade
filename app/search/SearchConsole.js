@@ -170,6 +170,8 @@ const defaultGlobalSummary = {
 const DEFAULT_PAGINATION_TOTAL = 1000;
 const globalMetrics = ["Quantity", "shipment_count", "Total_Value_in_USD"];
 const countryMetrics = [...globalMetrics, "Total_Value_in_INR", "Total_Value_in_VND"];
+const tradeSearchCache = new Map();
+const TRADE_SEARCH_CACHE_TTL = 10 * 60 * 1000;
 
 function defaultDateRange() {
   const end = new Date();
@@ -887,6 +889,7 @@ export default function SearchConsole({
     if (nextSummary) {
       setSummary(nextSummary);
     }
+    return nextSummary;
   }
 
   async function fetchColumnFilterOptions(column) {
@@ -997,6 +1000,30 @@ export default function SearchConsole({
 
   async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
     const payload = buildSearchPayload(includeAdvanced, nextOffset, nextLimit);
+    const cacheKey = JSON.stringify(payload);
+    for (const [key, entry] of tradeSearchCache) {
+      if (Date.now() - entry.savedAt >= TRADE_SEARCH_CACHE_TTL) tradeSearchCache.delete(key);
+    }
+    const cached = tradeSearchCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.savedAt < TRADE_SEARCH_CACHE_TTL) {
+      setPageOffset(nextOffset);
+      setPageSize(nextLimit);
+      setLastIncludeAdvanced(includeAdvanced);
+      setRows(cached.rows);
+      setTotalRecords(cached.total);
+      if (cached.summary) setSummary(cached.summary);
+      setApiMessage("Showing recently loaded results.");
+      setShowSuggestions(false);
+      setSuggestions([]);
+      setAggregationData({
+        importers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
+        suppliers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
+      });
+      setIsLoading(false);
+      showTableToast("Restored recent results.");
+      return;
+    }
 
     setPageOffset(nextOffset);
     setPageSize(nextLimit);
@@ -1038,8 +1065,16 @@ export default function SearchConsole({
 
       const apiRows = getApiRows(data);
       if (apiRows.length) {
-        setRows(normalizeApiRows(apiRows));
-        setTotalRecords(getApiTotal(data, DEFAULT_PAGINATION_TOTAL));
+        const normalizedRows = normalizeApiRows(apiRows);
+        const total = getApiTotal(data, DEFAULT_PAGINATION_TOTAL);
+        setRows(normalizedRows);
+        setTotalRecords(total);
+        tradeSearchCache.set(cacheKey, {
+          rows: normalizedRows,
+          total,
+          summary: summaryResult.status === "fulfilled" ? summaryResult.value : null,
+          savedAt: Date.now(),
+        });
         setApiMessage("");
         notifyUsageChanged();
         showTableToast(`Table updated with ${apiRows.length.toLocaleString()} records.`);
