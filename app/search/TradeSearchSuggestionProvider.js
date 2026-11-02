@@ -52,7 +52,7 @@ function uniqueSuggestions(rows, query, type) {
 
 async function fetchSuggestions(params) {
   const query = readParam(params, "suggestQuery").trim();
-  if (query.length < 2) return [];
+  if (query.length < 2) return { suggestions: [], requestPayload: null, endpoint: null };
 
   const country = readParam(params, "suggestCountry", "");
   const tradeType = readParam(params, "suggestTradeType", "export");
@@ -63,7 +63,8 @@ async function fetchSuggestions(params) {
     process.env.TRADES_API_BASE_URL ||
     process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
 
-  if (!baseUrl) return [];
+  if (!baseUrl) return { suggestions: [], requestPayload: null, endpoint: null };
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`;
 
   const filters = {};
 
@@ -109,7 +110,7 @@ async function fetchSuggestions(params) {
 
   try {
     const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`,
+      endpoint,
       {
         method: "POST",
         headers: {
@@ -120,17 +121,17 @@ async function fetchSuggestions(params) {
       },
     );
 
-    if (!response.ok) return [];
+    if (!response.ok) return { suggestions: [], requestPayload: payload, endpoint };
 
     const data = await response.json();
-    return uniqueSuggestions(getRows(data), query, type);
+    return { suggestions: uniqueSuggestions(getRows(data), query, type), requestPayload: payload, endpoint };
   } catch {
-    return [];
+    return { suggestions: [], requestPayload: payload, endpoint };
   }
 }
 
 export default async function TradeSearchSuggestionProvider({ searchParams }) {
-  const suggestions = await fetchSuggestions(searchParams);
+  const { suggestions, requestPayload, endpoint } = await fetchSuggestions(searchParams);
 
   // trades/report is intentionally disabled for now because it slows page SSR.
   // Re-enable by fetching the report here and passing it into SearchConsole.
@@ -139,6 +140,8 @@ export default async function TradeSearchSuggestionProvider({ searchParams }) {
     <SearchConsole
       initialSuggestions={suggestions}
       initialSuggestionQuery={readParam(searchParams, "suggestQuery")}
+      initialSuggestionRequestPayload={requestPayload}
+      initialSuggestionEndpoint={endpoint}
     />
   );
 }

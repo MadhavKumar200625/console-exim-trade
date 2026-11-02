@@ -234,6 +234,8 @@ function AggregationTable({ title, rows, loading, error, onRetry, offset, limit,
 export default function SearchConsole({
   initialSuggestions = [],
   initialSuggestionQuery = "",
+  initialSuggestionRequestPayload = null,
+  initialSuggestionEndpoint = null,
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -306,6 +308,15 @@ export default function SearchConsole({
   useEffect(() => {
     setSuggestions(initialSuggestions);
   }, [initialSuggestions]);
+
+  useEffect(() => {
+    if (!initialSuggestionRequestPayload) return;
+    console.log(
+      `[UPSTREAM API] POST ${initialSuggestionEndpoint || "trades search"}`,
+      "Request payload:",
+      initialSuggestionRequestPayload,
+    );
+  }, [initialSuggestionEndpoint, initialSuggestionRequestPayload]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {

@@ -26,6 +26,7 @@ function LoginForm() {
         body: JSON.stringify({ email: form.email, password: form.password }),
       });
       const data = await response.json();
+      console.log("[auth] Login API diagnostics:", data.debug || "No diagnostics returned.");
       if (!response.ok) throw new Error(data.message || "Login failed.");
       setStep("otp");
       setDevOtp(data.devOtp || "");

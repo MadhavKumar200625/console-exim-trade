@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
 import { logSearch } from "@/lib/userDb";
+import { upstreamJson } from "@/lib/upstreamResponse";
 
 function demoResponse(message) {
   return NextResponse.json({
@@ -43,14 +44,15 @@ export async function POST(request) {
     const data = text ? JSON.parse(text) : {};
     await logSearch(session.masterId, session.userId, payload, payload.Table_Name || "global");
 
-    return NextResponse.json(data, { status: response.status });
+    return upstreamJson(data, { status: response.status }, endpoint);
   } catch (error) {
-    return NextResponse.json(
+    return upstreamJson(
       {
         message: error.message || "Unable to connect to trades API.",
         data: [],
       },
       { status: 502 },
+      endpoint,
     );
   }
 }

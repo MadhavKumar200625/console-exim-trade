@@ -11,9 +11,12 @@ export async function POST(request) {
     return NextResponse.json({ message: "Email and password are required." }, { status: 400 });
   }
 
-  const user = await verifyUserPassword(String(email).trim().toLowerCase(), password);
+  const { user, debug } = await verifyUserPassword(String(email).trim().toLowerCase(), password);
   if (!user) {
-    return NextResponse.json({ message: "Invalid login details." }, { status: 401 });
+    return NextResponse.json(
+      { message: "Invalid login details.", debug },
+      { status: 401 },
+    );
   }
 
   const otp = String(crypto.randomInt(100000, 1000000));
@@ -27,5 +30,6 @@ export async function POST(request) {
     otpRequired: true,
     emailConfigured: isEmailConfigured(),
     devOtp: emailResult.sent ? undefined : otp,
+    debug,
   });
 }

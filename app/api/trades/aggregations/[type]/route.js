@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
+import { upstreamJson } from "@/lib/upstreamResponse";
 
 const allowedTypes = new Set(["importers", "suppliers"]);
 
@@ -21,11 +22,12 @@ export async function POST(request, { params }) {
       { status: 503 },
     );
   }
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/api/v1/trades/aggregations/${type}`;
 
   try {
     const payload = await request.json();
     const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/v1/trades/aggregations/${type}`,
+      endpoint,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -35,11 +37,12 @@ export async function POST(request, { params }) {
     );
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
-    return NextResponse.json(data, { status: response.status });
+    return upstreamJson(data, { status: response.status }, endpoint);
   } catch (error) {
-    return NextResponse.json(
+    return upstreamJson(
       { message: error.message || "Unable to connect to the trade aggregation API.", data: [] },
       { status: 502 },
+      endpoint,
     );
   }
 }

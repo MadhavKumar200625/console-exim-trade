@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
+import { upstreamJson } from "@/lib/upstreamResponse";
 
 function demoResponse(message) {
   return NextResponse.json({
@@ -18,10 +19,11 @@ export async function POST(request) {
   if (!baseUrl) {
     return demoResponse("TRADES_API_BASE_URL is not configured.");
   }
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/api/v1/trades/summary`;
 
   try {
     const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/v1/trades/summary`,
+      endpoint,
       {
         method: "POST",
         headers: {
@@ -35,14 +37,15 @@ export async function POST(request) {
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
 
-    return NextResponse.json(data, { status: response.status });
+    return upstreamJson(data, { status: response.status }, endpoint);
   } catch (error) {
-    return NextResponse.json(
+    return upstreamJson(
       {
         message: error.message || "Unable to connect to trades summary API.",
         data: null,
       },
       { status: 502 },
+      endpoint,
     );
   }
 }

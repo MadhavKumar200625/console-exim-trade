@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
+import { upstreamJson } from "@/lib/upstreamResponse";
 
 export async function POST(request) {
   await requireSession();
@@ -11,6 +12,7 @@ export async function POST(request) {
       { message: "TRADES_API_BASE_URL is not configured.", data: [] },
       { status: 503 },
     );
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/api/v1/trades/trends/monthly`;
 
   try {
 
@@ -18,7 +20,7 @@ export async function POST(request) {
     console.log("[trades/trends/monthly] payload", JSON.stringify(payload));
     
     const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/v1/trades/trends/monthly`,
+      endpoint,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -30,16 +32,17 @@ export async function POST(request) {
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
     // console.log("[trades/trends/monthly] response", response.status, JSON.stringify(data));
-    return NextResponse.json(data, {
+    return upstreamJson(data, {
       status: response.status,
-    });
+    }, endpoint);
   } catch (error) {
-    return NextResponse.json(
+    return upstreamJson(
       {
         message: error.message || "Unable to connect to the trade trends API.",
         data: [],
       },
       { status: 502 },
+      endpoint,
     );
   }
 }
