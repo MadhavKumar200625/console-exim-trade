@@ -10,13 +10,19 @@ export default function SubscriptionPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const perPage = 5;
 
   useEffect(() => {
     fetch("/api/user/subscriptions")
-      .then((response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load your subscriptions.");
+        return response.json();
+      })
       .then((data) => setSubscriptions(data?.subscriptions || []))
-      .catch(() => {});
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
   }, []);
 
   // 🔍 Search + Sorting Logic
@@ -37,7 +43,8 @@ export default function SubscriptionPage() {
   }, [subscriptions, search, sortField, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / perPage));
-  const visibleData = filteredData.slice((page - 1) * perPage, page * perPage);
+  const currentPage = Math.min(page, totalPages);
+  const visibleData = filteredData.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -83,7 +90,7 @@ export default function SubscriptionPage() {
             placeholder="Search subscriptions..."
             className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-white/70 focus:ring-2 focus:ring-blue-400 outline-none text-sm"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
       </div>
@@ -127,7 +134,11 @@ export default function SubscriptionPage() {
           </thead>
 
           <tbody>
-            {visibleData.length > 0 ? (
+            {error ? (
+              <tr><td colSpan="8" role="alert" className="py-6 text-center text-rose-700">{error}</td></tr>
+            ) : loading ? (
+              <tr><td colSpan="8" className="py-6 text-center text-gray-500">Loading subscriptions…</td></tr>
+            ) : visibleData.length > 0 ? (
               visibleData.map((s, i) => (
                 <motion.tr
                   key={`${s.country}-${s.direction}-${s.dataRef}-${i}`}
@@ -156,7 +167,7 @@ export default function SubscriptionPage() {
                   colSpan="8"
                   className="py-6 text-center text-gray-400 text-sm"
                 >
-                  No matching results found.
+                  {subscriptions.length ? "No matching results found." : "No subscriptions found."}
                 </td>
               </tr>
             )}
@@ -167,8 +178,8 @@ export default function SubscriptionPage() {
       {/* PAGINATION */}
       <div className="flex justify-center items-center gap-4 mt-8">
         <button
-          disabled={page === 1}
-          onClick={() => setPage((p) => Math.max(p - 1, 1))}
+          disabled={currentPage === 1}
+          onClick={() => setPage((p) => Math.max(Math.min(p, totalPages) - 1, 1))}
           className={`px-4 py-2 rounded-full text-sm border ${
             page === 1
               ? "opacity-40 cursor-not-allowed"
@@ -179,12 +190,12 @@ export default function SubscriptionPage() {
         </button>
 
         <span className="text-sm font-medium">
-          Page {page} of {totalPages}
+          Page {currentPage} of {totalPages}
         </span>
 
         <button
-          disabled={page === totalPages}
-          onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+          disabled={currentPage === totalPages}
+          onClick={() => setPage((p) => Math.min(Math.min(p, totalPages) + 1, totalPages))}
           className={`px-4 py-2 rounded-full text-sm border ${
             page === totalPages
               ? "opacity-40 cursor-not-allowed"

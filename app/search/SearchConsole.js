@@ -31,6 +31,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { labelForField } from "./searchConfig";
+import { buildSuggestionPayload } from "@/lib/tradeSuggestions";
 import AdvancedSearchFields, { createAdvancedRow } from "./AdvancedSearchFields";
 import VisualReport from "@/components/visual-report/VisualReport";
 import ReportBy, { reportByOptions } from "@/components/report-by/ReportBy";
@@ -241,6 +242,8 @@ export default function SearchConsole({
   const searchParams = useSearchParams();
   const homeSearchRun = searchParams.get("run");
   const homeAdvancedFilters = searchParams.get("advancedFilters") || "";
+  const [hasSearched, setHasSearched] = useState(Boolean(initialSuggestionQuery.trim()));
+  const [searchValidationMessage, setSearchValidationMessage] = useState("");
   const [country, setCountry] = useState(() => searchParams.get("suggestCountry") || "");
 
   const [showCountry, setShowCountry] = useState(false);
@@ -273,13 +276,17 @@ export default function SearchConsole({
   const [query, setQuery] = useState(initialSuggestionQuery);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionRequestId = useRef(0);
   const [pageSize, setPageSize] = useState(25);
   const [pageOffset, setPageOffset] = useState(0);
-  const [totalRecords, setTotalRecords] = useState(DEFAULT_PAGINATION_TOTAL);
+  const [totalRecords, setTotalRecords] = useState(0);
   const [lastIncludeAdvanced, setLastIncludeAdvanced] = useState(true);
-  const [rows, setRows] = useState(randomRows.slice(0, 25));
-  const [summary, setSummary] = useState(defaultGlobalSummary);
+  const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isTableProcessing, setIsTableProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [apiMessage, setApiMessage] = useState("");
@@ -308,6 +315,47 @@ export default function SearchConsole({
   useEffect(() => {
     setSuggestions(initialSuggestions);
   }, [initialSuggestions]);
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length < 2) {
+      setSuggestions([]);
+      return undefined;
+    }
+
+    const requestId = ++suggestionRequestId.current;
+    const timeout = window.setTimeout(async () => {
+      const payload = buildSuggestionPayload({
+        query: trimmedQuery,
+        type: searchType,
+        country,
+        tradeType,
+        from: dateRange.start,
+        to: dateRange.end,
+      });
+
+      try {
+        const response = await fetch(
+          `/api/trades/suggestions?query=${encodeURIComponent(trimmedQuery)}&type=${encodeURIComponent(searchType)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        const data = await response.json();
+        if (requestId !== suggestionRequestId.current) return;
+        setSuggestions(response.ok && Array.isArray(data.suggestions) ? data.suggestions : []);
+      } catch (error) {
+        if (requestId === suggestionRequestId.current) setSuggestions([]);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+      if (suggestionRequestId.current === requestId) suggestionRequestId.current += 1;
+    };
+  }, [country, dateRange.end, dateRange.start, query, searchType, tradeType]);
 
   useEffect(() => {
     if (!initialSuggestionRequestPayload) return;
@@ -382,6 +430,8 @@ export default function SearchConsole({
   const [countryChoices, setCountryChoices] = useState(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const initialSearchRequested = useRef(false);
+  const summaryRequestId = useRef(0);
+  const searchRequestId = useRef(0);
   const availableColumns = useMemo(
     () => (
       isGlobalSearch
@@ -897,10 +947,30 @@ export default function SearchConsole({
     }
 
     const nextSummary = getSummaryData(data);
-    if (nextSummary) {
-      setSummary(nextSummary);
-    }
     return nextSummary;
+  }
+
+  function startSummaryRequest(payload) {
+    const requestId = ++summaryRequestId.current;
+    setSummaryLoading(true);
+    setSummaryError("");
+    setSummary(null);
+
+    return fetchSummary(payload)
+      .then((nextSummary) => {
+        if (requestId !== summaryRequestId.current) return null;
+        setSummary(nextSummary);
+        return nextSummary;
+      })
+      .catch((error) => {
+        if (requestId === summaryRequestId.current) {
+          setSummaryError(error.message || "Unable to load the trade summary.");
+        }
+        return null;
+      })
+      .finally(() => {
+        if (requestId === summaryRequestId.current) setSummaryLoading(false);
+      });
   }
 
   async function fetchColumnFilterOptions(column) {
@@ -1011,6 +1081,14 @@ export default function SearchConsole({
 
   async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
     const payload = buildSearchPayload(includeAdvanced, nextOffset, nextLimit);
+    if (!Object.keys(payload.filters || {}).length) {
+      setSearchValidationMessage("Enter an HS code or product, or add at least one filter before searching.");
+      setShowSuggestions(false);
+      return;
+    }
+    setSearchValidationMessage("");
+    setHasSearched(true);
+    const requestId = ++searchRequestId.current;
     const cacheKey = JSON.stringify(payload);
     for (const [key, entry] of tradeSearchCache) {
       if (Date.now() - entry.savedAt >= TRADE_SEARCH_CACHE_TTL) tradeSearchCache.delete(key);
@@ -1024,6 +1102,13 @@ export default function SearchConsole({
       setRows(cached.rows);
       setTotalRecords(cached.total);
       if (cached.summary) setSummary(cached.summary);
+      if (cached.summary) {
+        summaryRequestId.current += 1;
+        setSummaryError("");
+        setSummaryLoading(false);
+      } else {
+        startSummaryRequest(payload);
+      }
       setApiMessage("Showing recently loaded results.");
       setShowSuggestions(false);
       setSuggestions([]);
@@ -1032,6 +1117,7 @@ export default function SearchConsole({
         suppliers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
       });
       setIsLoading(false);
+      setIsTableProcessing(false);
       showTableToast("Restored recent results.");
       return;
     }
@@ -1040,6 +1126,7 @@ export default function SearchConsole({
     setPageSize(nextLimit);
     setLastIncludeAdvanced(includeAdvanced);
     setIsLoading(true);
+    setIsTableProcessing(true);
     setApiMessage("");
     setShowSuggestions(false);
     setSuggestions([]);
@@ -1048,29 +1135,23 @@ export default function SearchConsole({
       suppliers: { rows: [], loading: false, error: "", loaded: false, offset: 0, limit: 50, total: DEFAULT_PAGINATION_TOTAL },
     });
 
+    const summaryPromise = startSummaryRequest(payload);
+
     try {
-      const [response, summaryResult] = await Promise.allSettled([
-        fetch("/api/trades/search", {
+      const response = await fetch("/api/trades/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        }),
-        fetchSummary(payload),
-      ]);
+      });
+      if (requestId === searchRequestId.current) setIsLoading(false);
 
-      if (summaryResult.status === "rejected") {
-        setApiMessage(summaryResult.reason?.message || "Unable to load trade summary.");
-      }
+      const data = await response.json();
 
-      if (response.status === "rejected") {
-        throw response.reason;
-      }
+      if (requestId !== searchRequestId.current) return;
 
-      const data = await response.value.json();
-
-      if (!response.value.ok) {
+      if (!response.ok) {
         throw new Error(data?.message || "Unable to load trade data.");
       }
 
@@ -1083,8 +1164,12 @@ export default function SearchConsole({
         tradeSearchCache.set(cacheKey, {
           rows: normalizedRows,
           total,
-          summary: summaryResult.status === "fulfilled" ? summaryResult.value : null,
+          summary: null,
           savedAt: Date.now(),
+        });
+        summaryPromise.then((nextSummary) => {
+          const entry = tradeSearchCache.get(cacheKey);
+          if (entry && nextSummary) tradeSearchCache.set(cacheKey, { ...entry, summary: nextSummary });
         });
         setApiMessage("");
         notifyUsageChanged();
@@ -1099,17 +1184,26 @@ export default function SearchConsole({
         showTableToast("Table updated with demo data.");
       }
     } catch (error) {
+      if (requestId !== searchRequestId.current) return;
       setRows(getDemoPage(nextOffset, nextLimit));
       setTotalRecords(DEFAULT_PAGINATION_TOTAL);
       setApiMessage(`${error.message} Showing demo data.`);
       showTableToast("Table updated with demo data.");
     } finally {
-      setIsLoading(false);
+      if (requestId === searchRequestId.current) {
+        setIsLoading(false);
+        setIsTableProcessing(false);
+      }
     }
   }
 
   useEffect(() => {
-    if (!workspaceReady || initialSearchRequested.current || (!initialSuggestionQuery.trim() && !homeAdvancedFilters)) return;
+    let hasInitialFilters = false;
+    try {
+      const parsedFilters = JSON.parse(homeAdvancedFilters || "[]");
+      hasInitialFilters = Array.isArray(parsedFilters) && parsedFilters.some((row) => row?.field && row?.value?.trim());
+    } catch {}
+    if (!workspaceReady || initialSearchRequested.current || (!initialSuggestionQuery.trim() && !hasInitialFilters)) return;
     if (homeSearchRun) window.sessionStorage.setItem(`trade-search-run:${homeSearchRun}`, "started");
     initialSearchRequested.current = true;
     handleSearch(true, 0, pageSize);
@@ -1551,6 +1645,7 @@ export default function SearchConsole({
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
+                    setSearchValidationMessage("");
                     setShowSuggestions(e.target.value.trim().length >= 2);
                   }}
                   onFocus={() => {
@@ -1560,6 +1655,7 @@ export default function SearchConsole({
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") handleSearch(false, 0, pageSize);
+                    if (event.key === "Escape") setShowSuggestions(false);
                   }}
                   disabled={isLoading}
                   placeholder={
@@ -1594,7 +1690,8 @@ export default function SearchConsole({
                     <button
                       key={i}
                       onClick={() => {
-                        setQuery(item);
+                        const suggestedHsCode = searchType === "hscode" ? item.match(/^(\d+)\s+-\s+/)?.[1] : null;
+                        setQuery(suggestedHsCode || item);
                         setShowSuggestions(false);
                         setSuggestions([]);
                       }}
@@ -1608,9 +1705,11 @@ export default function SearchConsole({
             </div>
           </div>
         </div>
+        {searchValidationMessage && <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{searchValidationMessage}</p>}
+        {hasSearched && <>
         <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
           {/* STATS */}
-          <div className="flex items-center gap-4 flex-wrap">
+          <div className="relative flex min-h-16 items-center gap-4 flex-wrap">
 
   {reportCards.slice(0, 4).map((card) => (
     <div
@@ -1628,6 +1727,18 @@ export default function SearchConsole({
   ))}
 
 </div>
+
+          {summaryLoading && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-white/95 px-4 text-sm font-semibold text-blue-800 shadow-sm">
+              <RefreshCw size={17} className="animate-spin" />
+              <span>Loading your trade summary. Your table is ready to use.</span>
+            </div>
+          )}
+          {!summaryLoading && summaryError && (
+            <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+              Summary unavailable: {summaryError}
+            </p>
+          )}
 
           <div className="rounded-full bg-blue-600 px-6 py-2 text-sm font-semibold text-white shadow-md">
             Data Sheet
@@ -1654,8 +1765,10 @@ export default function SearchConsole({
             ))}
           </div>
         </div>
+        </>}
       </div>
 
+      {hasSearched && <>
       {/* COLUMN SELECTOR */}
       <AnimatePresence>
         {showColumnSelector && (
@@ -2108,7 +2221,7 @@ export default function SearchConsole({
 
             {/* BODY */}
             <tbody className="bg-white">
-              {isLoading && (
+              {isTableProcessing && (
                 <tr>
                   <td
                     colSpan={visibleColumns.length + 1}
@@ -2123,13 +2236,24 @@ export default function SearchConsole({
                       </div>
                       <div>
                         <p className="text-sm font-bold text-[#003466]">
-                          Loading trade data
+                          {rows.length ? "Updating the table" : "Preparing your table"}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           Building the latest grid from your payload.
                         </p>
                       </div>
                     </div>
+                  </td>
+                </tr>
+              )}
+
+              {!isLoading && !isTableProcessing && rows.length === 0 && (
+                <tr>
+                  <td colSpan={visibleColumns.length + 1} className="px-6 py-16 text-center">
+                    <p className="text-sm font-bold text-[#003466]">
+                      {apiMessage || (query.trim() ? "No shipment records were returned." : "Start by entering an HS code or product above.")}
+                    </p>
+                    {!query.trim() && <p className="mt-2 text-xs text-slate-500">You can also add filters with the Advanced Search button.</p>}
                   </td>
                 </tr>
               )}
@@ -2265,6 +2389,8 @@ export default function SearchConsole({
           </button>
         )}
       </div>
+
+      </>}
       
       {/* ADVANCED SEARCH MODAL */}
       <AnimatePresence>

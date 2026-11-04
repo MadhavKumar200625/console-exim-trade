@@ -25,6 +25,7 @@ export default function UserProfile() {
     email: "",
   });
   const [message, setMessage] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
   const [form, setForm] = useState({
     oldPassword: "",
     newPassword: "",
@@ -42,11 +43,16 @@ export default function UserProfile() {
 
   async function changePassword() {
     setMessage("");
+    if (!form.oldPassword || !form.newPassword || !form.confirmPassword) {
+      setMessage("Enter your current password and both new password fields.");
+      return;
+    }
     if (form.newPassword !== form.confirmPassword) {
       setMessage("New password and confirm password do not match.");
       return;
     }
 
+    setChangingPassword(true);
     try {
       const response = await fetch("/api/user/change-password", {
         method: "POST",
@@ -60,6 +66,8 @@ export default function UserProfile() {
       setForm({ oldPassword: "", newPassword: "", confirmPassword: "" });
     } catch (error) {
       setMessage(error.message);
+    } finally {
+      setChangingPassword(false);
     }
   }
 
@@ -203,6 +211,7 @@ export default function UserProfile() {
                   <p className="text-gray-600 text-sm mb-1">Old Password</p>
                   <input
                     type="password"
+                    required
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
                     value={form.oldPassword}
                     onChange={(e) =>
@@ -215,6 +224,7 @@ export default function UserProfile() {
                   <p className="text-gray-600 text-sm mb-1">New Password</p>
                   <input
                     type="password"
+                    required
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
                     value={form.newPassword}
                     onChange={(e) =>
@@ -227,6 +237,7 @@ export default function UserProfile() {
                   <p className="text-gray-600 text-sm mb-1">Confirm New Password</p>
                   <input
                     type="password"
+                    required
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none"
                     value={form.confirmPassword}
                     onChange={(e) =>
@@ -244,10 +255,11 @@ export default function UserProfile() {
                   Cancel
                 </button>
                 <button
+                  disabled={changingPassword}
                   onClick={changePassword}
-                  className="px-5 py-2 bg-linear-to-r from-blue-500 to-blue-700 text-white rounded-lg text-sm hover:shadow-lg"
+                  className="px-5 py-2 bg-linear-to-r from-blue-500 to-blue-700 text-white rounded-lg text-sm hover:shadow-lg disabled:opacity-60"
                 >
-                  Save Changes
+                  {changingPassword ? "Saving…" : "Save Changes"}
                 </button>
               </div>
             </motion.div>

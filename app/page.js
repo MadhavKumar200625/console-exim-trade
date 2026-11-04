@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Download,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import AdvancedSearchFields from "./search/AdvancedSearchFields";
 import { COUNTRIES } from "./search/countries";
+import { buildSuggestionPayload } from "@/lib/tradeSuggestions";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -19,6 +20,12 @@ export default function Dashboard() {
   const [country, setCountry] = useState("");
   const [tradeType, setTradeType] = useState("export");
   const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const suggestionRequestId = useRef(0);
+  const searchBoxRef = useRef(null);
   const [searchType, setSearchType] = useState("hscode");
   const [advancedRows, setAdvancedRows] = useState([]);
   const [dashboard, setDashboard] = useState({
@@ -29,6 +36,17 @@ export default function Dashboard() {
     favorites: [],
     downloads: [],
   });
+
+  useEffect(() => {
+    function closeSuggestions(event) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
+        setSuggestionsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeSuggestions);
+    return () => document.removeEventListener("mousedown", closeSuggestions);
+  }, []);
 
   useEffect(() => {
     fetch("/api/user/dashboard")
@@ -48,18 +66,78 @@ export default function Dashboard() {
   const downloadPercent = downloadTotal ? Math.min(100, (downloadUsed / downloadTotal) * 100) : 0;
   const searchPercent = searchTotal ? Math.min(100, (searchUsed / searchTotal) * 100) : 0;
   const startSearch = (includeAdvanced = false) => {
+    const trimmedQuery = query.trim();
+    const validAdvancedRows = includeAdvanced
+      ? advancedRows.filter((row) => row.field && row.value?.trim())
+      : [];
+    if (!trimmedQuery && validAdvancedRows.length === 0) {
+      setSearchError("Enter an HS code or product, or add an advanced filter to search.");
+      return;
+    }
+    setSearchError("");
     const params = new URLSearchParams();
-    if (query.trim()) params.set("suggestQuery", query.trim());
+    if (trimmedQuery) params.set("suggestQuery", trimmedQuery);
     params.set("suggestType", searchType);
     if (country) params.set("suggestCountry", country);
     params.set("suggestTradeType", tradeType);
     if (includeAdvanced) {
-      const filters = advancedRows.filter((row) => row.field && row.value.trim());
-      if (filters.length) params.set("advancedFilters", JSON.stringify(filters));
+      if (validAdvancedRows.length) params.set("advancedFilters", JSON.stringify(validAdvancedRows));
     }
     params.set("run", String(Date.now()));
     router.push(`/search${params.toString() ? `?${params}` : ""}`);
   };
+
+  const applySuggestion = (suggestion) => {
+    const hsCode = searchType === "hscode" ? suggestion.match(/^(\d+)\s+-\s+/)?.[1] : null;
+    setQuery(hsCode || suggestion);
+    setSuggestionsOpen(false);
+    setSearchError("");
+  };
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length < 2) {
+      setSuggestions([]);
+      setSuggestionsLoading(false);
+      return undefined;
+    }
+
+    const requestId = ++suggestionRequestId.current;
+    const timeout = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      const payload = buildSuggestionPayload({
+        query: trimmedQuery,
+        type: searchType,
+        country,
+        tradeType,
+        from: "2010-01-01",
+        to: "2026-12-31",
+      });
+
+      try {
+        const response = await fetch(
+          `/api/trades/suggestions?query=${encodeURIComponent(trimmedQuery)}&type=${encodeURIComponent(searchType)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        const data = await response.json();
+        if (requestId !== suggestionRequestId.current) return;
+        setSuggestions(response.ok && Array.isArray(data.suggestions) ? data.suggestions : []);
+      } catch (error) {
+        if (requestId === suggestionRequestId.current) setSuggestions([]);
+      } finally {
+        if (requestId === suggestionRequestId.current) setSuggestionsLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+      if (suggestionRequestId.current === requestId) suggestionRequestId.current += 1;
+    };
+  }, [country, query, searchType, tradeType]);
 
   return (
     <div className="min-h-screen bg-linear-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 lg:px-8 py-10 text-[#003466] relative overflow-hidden">
@@ -111,13 +189,21 @@ export default function Dashboard() {
               <option value="">Global</option>
               {COUNTRIES.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
-            <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 shadow-sm focus-within:ring-2 focus-within:ring-blue-400">
+            <div ref={searchBoxRef} className="relative flex min-h-14 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 shadow-sm focus-within:ring-2 focus-within:ring-blue-400">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 text-white"><Search size={18} /></span>
-              <input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") startSearch(); }} placeholder={searchType === "industry" ? "Search company, importer, or exporter" : "Search HS code, product ..."} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#003466] outline-none placeholder:text-slate-400 sm:text-base" />
+              <input value={query} onFocus={() => query.trim().length >= 2 && setSuggestionsOpen(true)} onChange={(event) => { setQuery(event.target.value); setSuggestionsOpen(true); setSearchError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); startSearch(); } if (event.key === "Escape") setSuggestionsOpen(false); }} placeholder={searchType === "industry" ? "Search company, importer, or exporter" : "Search HS code, product ..."} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#003466] outline-none placeholder:text-slate-400 sm:text-base" />
+              {suggestionsOpen && query.trim().length >= 2 && (suggestions.length > 0 || suggestionsLoading) && (
+                <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-50 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                  {suggestionsLoading && suggestions.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">Loading suggestions…</p> : suggestions.map((item, index) => (
+                    <button key={`${item}-${index}`} type="button" onClick={() => applySuggestion(item)} className="block w-full border-b border-blue-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 last:border-0 hover:bg-blue-50">{item}</button>
+                  ))}
+                </div>
+              )}
             </div>
             <button onClick={() => setShowAdvance(true)} className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-blue-100 bg-white px-5 text-sm font-bold text-blue-700 shadow-sm transition hover:bg-blue-50"><SlidersHorizontal size={17} />Advanced</button>
             <button onClick={() => startSearch()} className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 px-6 text-sm font-bold text-white shadow-lg shadow-blue-700/20 transition hover:scale-[1.02]"><Search size={17} />Search</button>
           </div>
+          {searchError && <p role="alert" className="mt-3 text-sm font-semibold text-rose-700">{searchError}</p>}
         </div>
       </motion.div>
 

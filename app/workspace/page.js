@@ -31,6 +31,10 @@ export default function WorkspacePage() {
   const [showDetails, setShowDetails] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const perPage = 4;
 
@@ -38,7 +42,10 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     fetch("/api/user/workspace")
-      .then((response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load your saved workspaces.");
+        return response.json();
+      })
       .then((data) => {
         const next = (data?.workspaces || []).map((item) => ({
           ...item,
@@ -47,15 +54,32 @@ export default function WorkspacePage() {
         }));
         setWorkspaces(next);
       })
-      .catch(() => {});
+      .catch((fetchError) => setLoadError(fetchError.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const totalPages = Math.max(1, Math.ceil(workspaces.length / perPage));
-  const visibleData = workspaces.slice((page - 1) * perPage, page * perPage);
+  const currentPage = Math.min(page, totalPages);
+  const visibleData = workspaces.slice((currentPage - 1) * perPage, currentPage * perPage);
 
-  const handleDelete = (id) => {
-    setWorkspaces((prev) => prev.filter((w) => w.id !== id));
-    setConfirmDelete(null);
+  const handleDelete = async (id) => {
+    setDeleting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/user/workspace", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Unable to delete workspace.");
+      setWorkspaces((prev) => prev.filter((workspace) => String(workspace.id) !== String(id)));
+      setConfirmDelete(null);
+    } catch (deleteError) {
+      setError(deleteError.message || "Unable to delete workspace.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   function openDetails(workspace) {
@@ -112,8 +136,13 @@ export default function WorkspacePage() {
       </motion.div>
 
       {/* WORKSPACE CARDS */}
+      {error && <p role="alert" className="mx-auto mb-5 max-w-7xl rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8  mx-auto">
-        {visibleData.length === 0 && (
+        {loading ? (
+          <div className="col-span-full rounded-2xl border border-white/70 bg-white/80 p-10 text-center text-sm font-semibold text-blue-700 shadow-lg">Loading saved workspaces…</div>
+        ) : loadError ? (
+          <div role="alert" className="col-span-full rounded-2xl border border-rose-200 bg-rose-50 p-10 text-center text-sm font-semibold text-rose-800 shadow-lg">{loadError}</div>
+        ) : visibleData.length === 0 && (
           <div className="col-span-full rounded-2xl border border-white/70 bg-white/80 p-10 text-center text-sm font-semibold text-gray-500 shadow-lg">
             No saved tables found.
           </div>
@@ -201,8 +230,8 @@ export default function WorkspacePage() {
       <div className="flex justify-center items-center gap-4 mt-10 flex-wrap">
         <motion.button
           whileTap={{ scale: 0.9 }}
-          disabled={page === 1}
-          onClick={() => setPage((p) => Math.max(p - 1, 1))}
+          disabled={currentPage === 1}
+          onClick={() => setPage((p) => Math.max(Math.min(p, totalPages) - 1, 1))}
           className={`flex items-center gap-1 px-4 py-2 rounded-full border text-sm ${
             page === 1
               ? "opacity-40 cursor-not-allowed"
@@ -213,13 +242,13 @@ export default function WorkspacePage() {
         </motion.button>
 
         <span className="text-xs sm:text-sm font-medium">
-          Page {page} of {totalPages}
+          Page {currentPage} of {totalPages}
         </span>
 
         <motion.button
           whileTap={{ scale: 0.9 }}
-          disabled={page === totalPages}
-          onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+          disabled={currentPage === totalPages}
+          onClick={() => setPage((p) => Math.min(Math.min(p, totalPages) + 1, totalPages))}
           className={`flex items-center gap-1 px-4 py-2 rounded-full border text-sm ${
             page === totalPages
               ? "opacity-40 cursor-not-allowed"
@@ -365,16 +394,18 @@ export default function WorkspacePage() {
               </p>
               <div className="flex justify-center gap-4 flex-wrap">
                 <button
+                  disabled={deleting}
                   onClick={() => setConfirmDelete(null)}
                   className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-100"
                 >
                   Cancel
                 </button>
                 <button
+                  disabled={deleting}
                   onClick={() => handleDelete(confirmDelete)}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600"
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 disabled:opacity-60"
                 >
-                  Delete
+                  {deleting ? "Deleting…" : "Delete"}
                 </button>
               </div>
             </motion.div>

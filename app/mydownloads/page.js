@@ -10,6 +10,8 @@ export default function MyDownloadsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [downloads, setDownloads] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [usage, setUsage] = useState({
     downloads: { used: 0, total: 0 },
   });
@@ -17,13 +19,16 @@ export default function MyDownloadsPage() {
 
   useEffect(() => {
     fetch("/api/user/downloads")
-      .then((response) => (response.ok ? response.json() : null))
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load your downloads.");
+        return response.json();
+      })
       .then((data) => {
-        if (!data) return;
         setDownloads(data.downloads || []);
         setUsage(data.usage || { downloads: { used: 0, total: 0 } });
       })
-      .catch(() => {});
+      .catch((loadError) => setError(loadError.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const filteredData = useMemo(() => {
@@ -43,7 +48,8 @@ export default function MyDownloadsPage() {
   }, [downloads, sortField, sortOrder, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / perPage));
-  const visibleData = filteredData.slice((page - 1) * perPage, page * perPage);
+  const currentPage = Math.min(page, totalPages);
+  const visibleData = filteredData.slice((currentPage - 1) * perPage, currentPage * perPage);
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -108,7 +114,7 @@ export default function MyDownloadsPage() {
             placeholder="Search downloads..."
             className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-white/70 focus:ring-2 focus:ring-blue-400 outline-none text-sm"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
         </div>
       </div>
@@ -148,7 +154,11 @@ export default function MyDownloadsPage() {
             </tr>
           </thead>
           <tbody>
-            {visibleData.length > 0 ? (
+            {error ? (
+              <tr><td colSpan="5" role="alert" className="py-6 text-center text-rose-700">{error}</td></tr>
+            ) : loading ? (
+              <tr><td colSpan="5" className="py-6 text-center text-gray-500">Loading downloads…</td></tr>
+            ) : visibleData.length > 0 ? (
               visibleData.map((d, i) => (
                 <motion.tr
                   key={d.id}
@@ -172,7 +182,7 @@ export default function MyDownloadsPage() {
                   colSpan="5"
                   className="py-6 text-center text-gray-400 text-sm"
                 >
-                  No matching results found.
+                  {downloads.length ? "No matching results found." : "No downloads yet."}
                 </td>
               </tr>
             )}
@@ -183,8 +193,8 @@ export default function MyDownloadsPage() {
       {/* PAGINATION */}
       <div className="flex justify-center items-center gap-4 mt-8">
         <button
-          disabled={page === 1}
-          onClick={() => setPage((p) => Math.max(p - 1, 1))}
+          disabled={currentPage === 1}
+          onClick={() => setPage((p) => Math.max(Math.min(p, totalPages) - 1, 1))}
           className={`px-4 py-2 rounded-full text-sm border ${
             page === 1
               ? "opacity-40 cursor-not-allowed"
@@ -195,12 +205,12 @@ export default function MyDownloadsPage() {
         </button>
 
         <span className="text-sm font-medium">
-          Page {page} of {totalPages}
+          Page {currentPage} of {totalPages}
         </span>
 
         <button
-          disabled={page === totalPages}
-          onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
+          disabled={currentPage === totalPages}
+          onClick={() => setPage((p) => Math.min(Math.min(p, totalPages) + 1, totalPages))}
           className={`px-4 py-2 rounded-full text-sm border ${
             page === totalPages
               ? "opacity-40 cursor-not-allowed"
