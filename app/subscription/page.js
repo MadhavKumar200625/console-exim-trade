@@ -45,6 +45,11 @@ export default function SubscriptionPage() {
   const totalPages = Math.max(1, Math.ceil(filteredData.length / perPage));
   const currentPage = Math.min(page, totalPages);
   const visibleData = filteredData.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const displayDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
+  };
 
   const toggleSort = (field) => {
     if (sortField === field) {
@@ -102,6 +107,7 @@ export default function SubscriptionPage() {
             <tr>
               {[
                 { key: "country", label: "Country Name" },
+                { key: "isoCode", label: "Country Code" },
                 { key: "direction", label: "Direction" },
                 { key: "dataType", label: "Data Type" },
                 { key: "dataRef", label: "Data Reference" },
@@ -135,9 +141,9 @@ export default function SubscriptionPage() {
 
           <tbody>
             {error ? (
-              <tr><td colSpan="8" role="alert" className="py-6 text-center text-rose-700">{error}</td></tr>
+              <tr><td colSpan="9" role="alert" className="py-6 text-center text-rose-700">{error}</td></tr>
             ) : loading ? (
-              <tr><td colSpan="8" className="py-6 text-center text-gray-500">Loading subscriptions…</td></tr>
+              <tr><td colSpan="9" className="py-6 text-center text-gray-500">Loading subscriptions…</td></tr>
             ) : visibleData.length > 0 ? (
               visibleData.map((s, i) => (
                 <motion.tr
@@ -150,12 +156,13 @@ export default function SubscriptionPage() {
                   <td className="py-3 px-4 flex items-center gap-2">
                     <Globe2 size={14} className="text-blue-500" /> {s.country}
                   </td>
+                  <td className="py-3 px-4">{s.isoCode || "-"}</td>
                   <td className="py-3 px-4">{s.direction}</td>
                   <td className="py-3 px-4">{s.dataType}</td>
                   <td className="py-3 px-4">{s.dataRef}</td>
                   <td className="py-3 px-4">{s.coverage}</td>
-                  <td className="py-3 px-4">{s.fromDate}</td>
-                  <td className="py-3 px-4">{s.toDate}</td>
+                  <td className="py-3 px-4">{displayDate(s.fromDate)}</td>
+                  <td className="py-3 px-4">{displayDate(s.toDate)}</td>
                   <td className="py-3 px-4 font-semibold text-blue-700">
                     {s.pointsPerRecord}
                   </td>
@@ -164,7 +171,7 @@ export default function SubscriptionPage() {
             ) : (
               <tr>
                 <td
-                  colSpan="8"
+                  colSpan="9"
                   className="py-6 text-center text-gray-400 text-sm"
                 >
                   {subscriptions.length ? "No matching results found." : "No subscriptions found."}

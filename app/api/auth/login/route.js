@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { sendOtpEmail, isEmailConfigured } from "@/lib/email";
+import { sendOtpEmail } from "@/lib/email";
 import { hashOtp, setPendingLogin } from "@/lib/session";
 import { verifyUserPassword } from "@/lib/userDb";
 
@@ -11,25 +11,26 @@ export async function POST(request) {
     return NextResponse.json({ message: "Email and password are required." }, { status: 400 });
   }
 
-  const { user, debug } = await verifyUserPassword(String(email).trim().toLowerCase(), password);
+  const { user } = await verifyUserPassword(String(email).trim().toLowerCase(), password);
   if (!user) {
-    return NextResponse.json(
-      { message: "Invalid login details.", debug },
-      { status: 401 },
-    );
+    return NextResponse.json({ message: "Invalid login details." }, { status: 401 });
   }
 
   const otp = String(crypto.randomInt(100000, 1000000));
+  let emailResult;
+  try {
+    emailResult = await sendOtpEmail(user.email, otp);
+  } catch {
+    return NextResponse.json({ message: "Unable to send login verification code." }, { status: 503 });
+  }
+  if (!emailResult.sent) {
+    return NextResponse.json({ message: "Login verification email is unavailable." }, { status: 503 });
+  }
+
   await setPendingLogin(user, hashOtp(otp));
-  const emailResult = await sendOtpEmail(user.email, otp);
 
   return NextResponse.json({
-    message: emailResult.sent
-      ? "OTP sent to your email."
-      : "OTP generated. Configure email before production.",
+    message: "OTP sent to your email.",
     otpRequired: true,
-    emailConfigured: isEmailConfigured(),
-    devOtp: emailResult.sent ? undefined : otp,
-    debug,
   });
 }

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search,
@@ -12,7 +13,6 @@ import {
   ChevronDown,
   Filter,
   ArrowRight,
-  Calendar,
   Lightbulb,
   Eye,
   Copy,
@@ -141,28 +141,6 @@ const measurableColumns = new Set([
   "ID",
 ]);
 
-const randomRows = Array.from({ length: 120 }).map((_, i) => ({
-  Date: `${String((i % 27) + 1).padStart(2, "0")} Oct 2025`,
-  "HS Code": ["847130", "87089900", "850440", "851762"][i % 4],
-  Product: [
-    "Laptop Computers",
-    "Motor Vehicle Parts",
-    "Static Converters",
-    "Network Equipment",
-  ][i % 4],
-  Exporter: ["Tech Global Ltd", "Chongqing Machinery Co", "Voltex Systems", "Nexus Components"][i % 4],
-  "Exporter Country": ["China", "Germany", "Vietnam", "USA"][i % 4],
-  Importer: ["India Electronics", "Volvo India Pvt Ltd", "Nova Imports", "Apex Mobility"][i % 4],
-  "Importer Country": "India",
-  Quantity: 500 + i,
-  Unit: "PCS",
-  Price: 1200 + i * 3,
-  Currency: "USD",
-  Port: "Shanghai",
-  "Shipment Mode": "Sea",
-  "Trade Type": "Export",
-}));
-
 const defaultGlobalSummary = {
   total_shipments: 538413846,
   total_quantity: 20180394833963.258,
@@ -235,8 +213,6 @@ function AggregationTable({ title, rows, loading, error, onRetry, offset, limit,
 export default function SearchConsole({
   initialSuggestions = [],
   initialSuggestionQuery = "",
-  initialSuggestionRequestPayload = null,
-  initialSuggestionEndpoint = null,
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -250,6 +226,7 @@ export default function SearchConsole({
   const [countrySearch, setCountrySearch] = useState("");
   const filteredCountries = COUNTRIES.filter((name) => name.toLowerCase().includes(countrySearch.trim().toLowerCase()));
   const [searchType, setSearchType] = useState(() => searchParams.get("suggestType") || "hscode");
+  const [companyField, setCompanyField] = useState(() => searchParams.get("suggestCompanyField") === "Exporter_Name" ? "Exporter_Name" : "Importer_Name");
   const [tradeType, setTradeType] = useState(() => searchParams.get("suggestTradeType") || "export");
   const isGlobalSearch = !country;
   const columns = tradeType === "export" ? exportColumns : importColumns;
@@ -299,18 +276,35 @@ export default function SearchConsole({
   const [advancedRows, setAdvancedRows] = useState(() => {
     try {
       const rows = JSON.parse(searchParams.get("advancedFilters") || "[]");
-      if (!Array.isArray(rows)) return [];
+      if (!Array.isArray(rows)) return [createAdvancedRow()];
       const seen = new Set();
-      return rows
+      const restored = rows
         .filter((row) => row?.field && row?.value?.trim() && !seen.has(row.field) && seen.add(row.field))
         .map((row) => ({ ...row, id: createAdvancedRow().id }));
+      return restored.length ? restored : [createAdvancedRow()];
     } catch {
-      return [];
+      return [createAdvancedRow()];
     }
   });
 
   const [dateRange, setDateRange] = useState(defaultDateRange);
+  const [detailRow, setDetailRow] = useState(null);
+  const [expandedColumn, setExpandedColumn] = useState(null);
+  const [selectedRows, setSelectedRows] = useState([]);
+  const [downloadScope, setDownloadScope] = useState("visible");
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showSaveTableModal, setShowSaveTableModal] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [saveNameError, setSaveNameError] = useState("");
+
+  useEffect(() => {
+    if (!detailRow) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setDetailRow(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [detailRow]);
 
   useEffect(() => {
     setSuggestions(initialSuggestions);
@@ -328,6 +322,7 @@ export default function SearchConsole({
       const payload = buildSuggestionPayload({
         query: trimmedQuery,
         type: searchType,
+        companyField,
         country,
         tradeType,
         from: dateRange.start,
@@ -355,16 +350,7 @@ export default function SearchConsole({
       window.clearTimeout(timeout);
       if (suggestionRequestId.current === requestId) suggestionRequestId.current += 1;
     };
-  }, [country, dateRange.end, dateRange.start, query, searchType, tradeType]);
-
-  useEffect(() => {
-    if (!initialSuggestionRequestPayload) return;
-    console.log(
-      `[UPSTREAM API] POST ${initialSuggestionEndpoint || "trades search"}`,
-      "Request payload:",
-      initialSuggestionRequestPayload,
-    );
-  }, [initialSuggestionEndpoint, initialSuggestionRequestPayload]);
+  }, [companyField, country, dateRange.end, dateRange.start, query, searchType, tradeType]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -374,6 +360,8 @@ export default function SearchConsole({
       if (trimmedQuery.length >= 2) {
         params.set("suggestQuery", trimmedQuery);
         params.set("suggestType", searchType);
+        if (searchType === "industry") params.set("suggestCompanyField", companyField);
+        else params.delete("suggestCompanyField");
         if (country) {
           params.set("suggestCountry", country);
         } else {
@@ -404,6 +392,7 @@ export default function SearchConsole({
     return () => clearTimeout(timeout);
   }, [
     country,
+    companyField,
     dateRange.end,
     dateRange.start,
     query,
@@ -473,8 +462,9 @@ export default function SearchConsole({
   const searchBoxRef = useRef(null);
   const columnSelectorRef = useRef(null);
 
-  const formatDate = (date) =>
-  new Intl.DateTimeFormat("en-GB").format(new Date(date));
+  const formatDate = (date) => new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
+  }).format(new Date(`${date}T00:00:00Z`));
   useEffect(() => {
     function handleClickOutside(e) {
       if (filterRef.current && !filterRef.current.contains(e.target)) {
@@ -552,11 +542,9 @@ export default function SearchConsole({
           item?.[apiKey] ??
           item?.[column] ??
           (column === "Country" ? country || "Global" : "");
-        acc[column] = typeof value === "number" && !Number.isInteger(value)
-          ? Number(value.toFixed(2))
-          : value;
+        acc[column] = value;
         return acc;
-      }, {}),
+      }, { __allFields: item }),
     );
   }
 
@@ -658,10 +646,6 @@ export default function SearchConsole({
     return null;
   }
 
-  function getDemoPage(offset = pageOffset, limit = pageSize) {
-    return Array.from({ length: limit }, (_, index) => randomRows[(offset + index) % randomRows.length]);
-  }
-
   function showTableToast(message) {
     setToast({
       id: Date.now(),
@@ -673,7 +657,7 @@ export default function SearchConsole({
     window.dispatchEvent(new Event("console-usage-updated"));
   }
 
-  function rowsToCsv() {
+  function rowsToCsv(sourceRows = rows) {
     const headers = visibleColumns;
     const escapeCell = (value) => {
       const text = String(value ?? "");
@@ -682,16 +666,27 @@ export default function SearchConsole({
 
     return [
       headers.map(escapeCell).join(","),
-      ...rows.map((row) => headers.map((column) => escapeCell(row[column])).join(",")),
+      ...sourceRows.map((row) => headers.map((column) => escapeCell(row[column])).join(",")),
     ].join("\n");
   }
 
+  function openSaveTableModal() {
+    setWorkspaceName(query.trim() || `${country || "Global"} ${tradeType} table`);
+    setSaveNameError("");
+    setShowSaveTableModal(true);
+  }
+
   async function handleSaveTable() {
+    const name = workspaceName.trim();
+    if (!name) {
+      setSaveNameError("Enter a workspace name.");
+      return;
+    }
     setIsSaving(true);
     try {
       const payload = {
         ...buildSearchPayload(lastIncludeAdvanced, pageOffset, pageSize),
-        name: query.trim() || `${country || "Global"} ${tradeType} table`,
+        name,
       };
       const response = await fetch("/api/user/workspace", {
         method: "POST",
@@ -700,22 +695,33 @@ export default function SearchConsole({
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Unable to save table.");
-      showTableToast(data.saved ? "Table saved to workspace." : "SQL is not configured yet.");
+      if (data.saved) {
+        setShowSaveTableModal(false);
+        showTableToast(`“${name}” saved to workspace.`);
+      } else {
+        setSaveNameError("Workspace storage is not configured.");
+      }
     } catch (error) {
-      showTableToast(error.message || "Unable to save table.");
+      setSaveNameError(error.message || "Unable to save table.");
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDownload() {
+    const downloadRows = downloadScope === "selected" ? rows.filter((row) => selectedRows.includes(row)) : rows;
+    if (!downloadRows.length) {
+      showTableToast(downloadScope === "selected" ? "Select at least one shipment." : "There are no visible shipments to download.");
+      return;
+    }
     setIsDownloading(true);
     try {
       const payload = {
         ...buildSearchPayload(lastIncludeAdvanced, pageOffset, pageSize),
         category: "Data",
         fileName: `${country || "global"}-${tradeType}-search`,
-        count: rows.length,
+        count: downloadRows.length,
+        shipment_scope: downloadScope,
       };
       const response = await fetch("/api/user/downloads", {
         method: "POST",
@@ -725,7 +731,7 @@ export default function SearchConsole({
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Unable to log download.");
 
-      const blob = new Blob([rowsToCsv()], { type: "text/csv;charset=utf-8" });
+      const blob = new Blob([rowsToCsv(downloadRows)], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -743,14 +749,16 @@ export default function SearchConsole({
     }
   }
 
-  function buildFilters(includeAdvanced = true) {
+  function buildFilters(includeAdvanced = true, overrides = {}) {
     const filters = {};
-    const trimmedQuery = query.trim();
+    const trimmedQuery = (overrides.query ?? query).trim();
+    const activeAdvancedRows = overrides.advancedRows ?? advancedRows;
+    const activeColumnFilters = overrides.columnFilters ?? columnFilters;
 
     if (trimmedQuery) {
       if (searchType === "industry") {
-        filters.Product_Description = trimmedQuery;
-        filters.Product_Description_mode = "contains";
+        filters[companyField] = trimmedQuery;
+        filters[`${companyField}_mode`] = "contains";
       } else if (/^[0-9]+$/.test(trimmedQuery)) {
         filters.HS_Code = trimmedQuery;
         filters.HS_Code_mode = trimmedQuery.length >= 8 ? "exact" : "prefix";
@@ -761,7 +769,7 @@ export default function SearchConsole({
     }
 
     if (includeAdvanced) {
-      advancedRows.forEach((row) => {
+      activeAdvancedRows.forEach((row) => {
         if (!row.field || !row.value?.trim()) return;
         const existing = filters[row.field];
         filters[row.field] = existing ? [...(Array.isArray(existing) ? existing : [existing]), row.value.trim()] : row.value.trim();
@@ -770,7 +778,7 @@ export default function SearchConsole({
       });
     }
 
-    Object.entries(columnFilters).forEach(([column, filter]) => {
+    Object.entries(activeColumnFilters).forEach(([column, filter]) => {
       const field = getApiField(column);
       if (filter?.type === "number") {
         if (filter.min !== "" && filter.min !== undefined) {
@@ -791,14 +799,14 @@ export default function SearchConsole({
     return filters;
   }
 
-  function buildSearchPayload(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
+  function buildSearchPayload(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize, overrides = {}) {
     const payload = {
       date_range: {
         from: dateRange.start,
         to: dateRange.end,
       },
       columns: activeColumns.map((column) => getApiField(column)),
-      filters: buildFilters(includeAdvanced),
+      filters: buildFilters(includeAdvanced, overrides),
       sort: {
         field: "Date",
         order: "desc",
@@ -1079,8 +1087,8 @@ export default function SearchConsole({
     setFilterQueries((current) => ({ ...current, [column]: "" }));
   }
 
-  async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize) {
-    const payload = buildSearchPayload(includeAdvanced, nextOffset, nextLimit);
+  async function handleSearch(includeAdvanced = true, nextOffset = 0, nextLimit = pageSize, filterOverrides = {}) {
+    const payload = buildSearchPayload(includeAdvanced, nextOffset, nextLimit, filterOverrides);
     if (!Object.keys(payload.filters || {}).length) {
       setSearchValidationMessage("Enter an HS code or product, or add at least one filter before searching.");
       setShowSuggestions(false);
@@ -1175,20 +1183,18 @@ export default function SearchConsole({
         notifyUsageChanged();
         showTableToast(`Table updated with ${apiRows.length.toLocaleString()} records.`);
       } else {
-        setRows(getDemoPage(nextOffset, nextLimit));
-        setTotalRecords(DEFAULT_PAGINATION_TOTAL);
-        setApiMessage((current) =>
-          current || "No API rows returned. Showing demo data.",
-        );
+        setRows([]);
+        setTotalRecords(0);
+        setApiMessage("No shipment records were returned.");
         notifyUsageChanged();
-        showTableToast("Table updated with demo data.");
+        showTableToast("No shipment records were returned.");
       }
     } catch (error) {
       if (requestId !== searchRequestId.current) return;
-      setRows(getDemoPage(nextOffset, nextLimit));
-      setTotalRecords(DEFAULT_PAGINATION_TOTAL);
-      setApiMessage(`${error.message} Showing demo data.`);
-      showTableToast("Table updated with demo data.");
+      setRows([]);
+      setTotalRecords(0);
+      setApiMessage(error.message || "Unable to load trade data.");
+      showTableToast(error.message || "Unable to load trade data.");
     } finally {
       if (requestId === searchRequestId.current) {
         setIsLoading(false);
@@ -1267,18 +1273,22 @@ export default function SearchConsole({
 
   function getActiveSearchChips() {
     const chips = [
-      { label: "Scope", value: country || "Global" },
-      { label: "Trade", value: tradeType === "export" ? "Exports" : "Imports" },
+      { label: "Scope", value: country || "Global", removable: false },
       {
         label: "Dates",
         value: `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`,
+        removable: false,
       },
     ];
+
+    if (country) chips.splice(1, 0, { label: "Trade", value: tradeType === "export" ? "Exports" : "Imports", removable: false });
 
     if (query.trim()) {
       chips.push({
         label: searchType === "industry" ? "Company" : "Search",
         value: query.trim(),
+        kind: "query",
+        removable: true,
       });
     }
 
@@ -1287,6 +1297,9 @@ export default function SearchConsole({
       chips.push({
         label: row.field,
         value: `${labelForField(row.mode)} ${row.value.trim()}`,
+        kind: "advanced",
+        id: row.id,
+        removable: true,
       });
     });
 
@@ -1295,6 +1308,9 @@ export default function SearchConsole({
         chips.push({
           label: column,
           value: `${formatNumber(filter.min)} - ${formatNumber(filter.max)}`,
+          kind: "column",
+          id: column,
+          removable: true,
         });
         return;
       }
@@ -1303,6 +1319,9 @@ export default function SearchConsole({
         chips.push({
           label: column,
           value: filter.values.join(", "),
+          kind: "column",
+          id: column,
+          removable: true,
         });
       }
     });
@@ -1311,6 +1330,37 @@ export default function SearchConsole({
   }
 
   const activeSearchChips = getActiveSearchChips();
+
+  function removeActiveSearchChip(chip) {
+    const overrides = {};
+    if (chip.kind === "query") {
+      setQuery("");
+      setSuggestions([]);
+      setShowSuggestions(false);
+      overrides.query = "";
+    } else if (chip.kind === "advanced") {
+      const nextRows = advancedRows.filter((row) => row.id !== chip.id);
+      setAdvancedRows(nextRows);
+      overrides.advancedRows = nextRows;
+    } else if (chip.kind === "column") {
+      const nextFilters = { ...columnFilters };
+      delete nextFilters[chip.id];
+      setColumnFilters(nextFilters);
+      setFilterQueries((current) => ({ ...current, [chip.id]: "" }));
+      overrides.columnFilters = nextFilters;
+    }
+
+    const nextPayload = buildSearchPayload(lastIncludeAdvanced, 0, pageSize, overrides);
+    if (!Object.keys(nextPayload.filters || {}).length) {
+      setRows([]);
+      setTotalRecords(0);
+      setSummary(null);
+      setApiMessage("");
+      setSearchValidationMessage("Enter an HS code or product, or add at least one filter before searching.");
+      return;
+    }
+    handleSearch(lastIncludeAdvanced, 0, pageSize, overrides);
+  }
 
   function getReportCards() {
     return [
@@ -1335,97 +1385,26 @@ export default function SearchConsole({
 
   const reportCards = getReportCards();
 
-  function renderCellContent(row, col, index) {
+  function getColumnWidth(col) {
+    const labelLength = col.replaceAll("_", " ").length;
+    return Math.min(360, Math.max(170, 90 + labelLength * 8));
+  }
+
+  function renderCellContent(row, col) {
     const value = row[col] || "-";
 
-    if (col === "HS_Code") {
-      return (
-        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 font-mono text-xs font-semibold text-blue-700 shadow-sm">
-          <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.7)]"></span>
-          {value}
-        </div>
-      );
+    if (col === "Date" && value !== "-") {
+      const parsedDate = new Date(value);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        return <span className="text-slate-700">{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(parsedDate)}</span>;
+      }
     }
 
-    if (col === "Product_Description" || col === "HS_Code_Description") {
-      return (
-        <div className="min-w-[240px]">
-          <p className="font-semibold text-[#003466]">{value}</p>
-          <p className="mt-1 text-[11px] font-medium text-blue-500">
-            Shipment signal #{String(index + 1).padStart(3, "0")}
-          </p>
-        </div>
-      );
+    if ((col === "Exporter_Name" || col === "Importer_Name") && value !== "-") {
+      return <a href={googleCompanyUrl(value)} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-cyan-600 hover:decoration-cyan-500">{value}</a>;
     }
 
-    if (col === "Exporter_Name" || col === "Importer_Name") {
-      return (
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-xs font-bold text-white shadow-md">
-            {String(value).slice(0, 1)}
-          </div>
-          <div>
-            <a href={googleCompanyUrl(value)} target="_blank" rel="noreferrer" className="inline-flex max-w-[210px] items-center gap-1 truncate font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-cyan-600 hover:decoration-cyan-500">
-              {value}
-              <ArrowUpRight size={13} aria-hidden="true" />
-            </a>
-            <p className="text-[11px] text-slate-400">
-              {col === "Exporter_Name" ? "Seller node" : "Buyer node"}
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    if (col.includes("Country")) {
-      return (
-        <span className="inline-flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
-            <span className="h-2 w-2 rounded-full bg-blue-400"></span>
-          {value}
-        </span>
-      );
-    }
-
-    if (measurableColumns.has(col)) {
-      const numericValue = Number(value) || 0;
-      const maxValue = Math.max(
-        ...rows.map((row) => Number(row[col]) || 0),
-        1,
-      );
-      const width = Math.max(8, Math.min(100, (numericValue / maxValue) * 100));
-
-      return (
-        <div className="min-w-[160px]">
-          <div className="flex items-center justify-between gap-3">
-            <span className="font-mono text-xs font-semibold text-slate-700">
-              {numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </span>
-            <span className="text-[10px] uppercase text-slate-400">
-              {col.includes("Value") ? "USD" : "Units"}
-            </span>
-          </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-blue-100">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-500 via-sky-400 to-blue-300"
-              style={{ width: `${width}%` }}
-            ></div>
-          </div>
-        </div>
-      );
-    }
-
-    if (col === "Transport_Mode") {
-      return (
-        <span className="inline-flex items-center rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 ring-1 ring-cyan-100">
-          {value}
-        </span>
-      );
-    }
-
-    const numericValue = typeof value === "number" || (typeof value === "string" && value.trim() !== "")
-      ? Number(value)
-      : NaN;
-    return <span className="text-slate-700">{Number.isFinite(numericValue) ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 }) : value}</span>;
+    return <span className="text-slate-700">{value}</span>;
   }
 
   return (
@@ -1512,8 +1491,8 @@ export default function SearchConsole({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 xl:grid-cols-[auto_auto_auto_auto_minmax(360px,1fr)] xl:items-center">
-            <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
+          <div className={`mt-5 grid gap-3 xl:items-center ${isGlobalSearch ? "xl:grid-cols-[max-content_max-content_minmax(0,1fr)]" : "xl:grid-cols-[auto_auto_auto_minmax(360px,1fr)]"}`}>
+            {!isGlobalSearch && <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
               {[
                 { id: "import", label: "Imports" },
                 { id: "export", label: "Exports" },
@@ -1531,7 +1510,7 @@ export default function SearchConsole({
                   {item.label}
                 </button>
               ))}
-            </div>
+            </div>}
 
             <div ref={dropdownRef} className="relative">
               <button
@@ -1582,9 +1561,9 @@ export default function SearchConsole({
                 <button
                   onClick={() => setShowCalendar(!showCalendar)}
                   disabled={isLoading}
-                  className="flex h-14 w-14 cursor-pointer items-center justify-center rounded-2xl border border-blue-100 bg-white text-blue-700 shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                  className="flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-blue-100 bg-white px-4 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
                 >
-                  <Calendar size={18} />
+                  {formatDate(dateRange.start)} – {formatDate(dateRange.end)}
                 </button>
 
                 {showCalendar && (
@@ -1627,20 +1606,14 @@ export default function SearchConsole({
                 )}
               </div>
 
-            <div className="h-14 rounded-2xl border border-blue-100 bg-white px-4 py-3 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                Date Window
-              </p>
-              <p className="mt-1 text-sm font-bold text-[#003466]">
-                {formatDate(dateRange.start)} - {formatDate(dateRange.end)}
-              </p>
-            </div>
-
-            <div ref={searchBoxRef} className="relative xl:justify-self-end xl:w-full xl:max-w-3xl">
+            <div ref={searchBoxRef} className={`relative xl:justify-self-end xl:w-full ${isGlobalSearch ? "xl:max-w-none" : "xl:max-w-3xl"}`}>
               <div className="flex min-h-[64px] items-center gap-3 rounded-[24px] border border-blue-100 bg-white px-4 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7),0_18px_45px_rgba(0,52,102,0.10)]">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-blue-400 text-white shadow-md">
                   <Search size={20} />
                 </div>
+                {searchType === "industry" && <select value={companyField} onChange={(event) => setCompanyField(event.target.value)} aria-label="Company role" className="max-w-32 border-r border-blue-100 bg-transparent pr-2 text-xs font-semibold text-[#003466] outline-none">
+                  <option value="Importer_Name">Importer</option><option value="Exporter_Name">Exporter</option>
+                </select>}
                 <input
                   value={query}
                   onChange={(e) => {
@@ -1676,7 +1649,7 @@ export default function SearchConsole({
               </div>
 
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute top-[72px] left-16 right-4 z-[9999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                <div className="absolute top-[72px] left-16 right-4 z-[99999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
                   <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-2">
                     <span className="text-xs font-bold text-[#003466]">Suggestions</span>
                     <button
@@ -1756,11 +1729,12 @@ export default function SearchConsole({
           <div className="flex flex-wrap gap-2">
             {activeSearchChips.map((chip) => (
               <span
-                key={`${chip.label}-${chip.value}`}
+                key={`${chip.kind || chip.label}-${chip.id || chip.value}`}
                 className="inline-flex max-w-full items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#003466]"
               >
                 <span className="text-blue-600">{chip.label}</span>
                 <span className="max-w-[260px] truncate">{chip.value}</span>
+                {chip.removable && <button type="button" onClick={() => removeActiveSearchChip(chip)} aria-label={`Remove ${chip.label} filter`} title={`Remove ${chip.label} filter`} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-blue-100 hover:text-slate-900"><X size={12} /></button>}
               </span>
             ))}
           </div>
@@ -1864,8 +1838,9 @@ export default function SearchConsole({
           </button>
 
           <button
-            onClick={handleSaveTable}
-            disabled={isLoading || isSaving}
+            type="button"
+            onClick={openSaveTableModal}
+            disabled={isSaving}
             className="flex cursor-pointer items-center gap-2 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md disabled:cursor-wait disabled:opacity-60"
           >
             {isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
@@ -1873,6 +1848,11 @@ export default function SearchConsole({
           </button>
         </div>
         <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">Download
+            <select value={downloadScope} onChange={(event) => setDownloadScope(event.target.value)} className="rounded-lg border border-blue-100 bg-white px-2 py-2 text-xs text-slate-700">
+              <option value="visible">Visible shipments</option><option value="selected">Selected shipments</option>
+            </select>
+          </label>
           <button
             onClick={handleDownload}
             disabled={isLoading || isDownloading}
@@ -1981,11 +1961,11 @@ export default function SearchConsole({
           {activeTab === "data" ? (
             <>
           <div className="relative w-full overflow-auto">
-          <table className="min-w-[1900px] w-full border-separate border-spacing-0 text-sm">
+          <table className="min-w-full w-full table-fixed border-separate border-spacing-0 text-sm">
             {/* HEADER */}
             <thead className="sticky top-0 z-20 bg-white/90 shadow-[0_10px_30px_rgba(15,47,79,0.08)] backdrop-blur-xl">
               <tr>
-                <th className="sticky left-0 z-40 w-[86px] border-b border-r border-blue-100 bg-gradient-to-b from-white to-blue-50 px-4 py-4 text-left">
+                <th className="sticky left-0 z-40 w-[132px] border-b border-r border-blue-100 bg-gradient-to-b from-white to-blue-50 px-4 py-4 text-left">
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500">
                     Row
                   </span>
@@ -1996,20 +1976,21 @@ export default function SearchConsole({
                   return (
                     <th
                       key={col}
-                      className={`relative px-4 py-4 text-left whitespace-nowrap border-b border-r border-blue-100/80 group transition
+                      style={{ width: expandedColumn === col ? 420 : getColumnWidth(col) }}
+                      className={`relative px-2 py-2 text-left border-b border-r border-blue-100/80 group transition
           ${active ? "bg-blue-50 ring-1 ring-blue-200" : "bg-white/70"}
           `}
                     >
                       {/* COLUMN HEADER */}
                       <div
                         onClick={() => openColumnFilter(col)}
-                        className={`flex min-h-14 items-center justify-between gap-4 cursor-pointer rounded-2xl border border-transparent px-3 py-2 transition-all
+                        className={`flex min-h-14 items-center justify-between gap-2 cursor-pointer rounded-2xl border border-transparent px-2 py-2 transition-all
             hover:border-blue-100 hover:bg-blue-50/70 hover:shadow-sm`}
                       >
                         {/* COLUMN NAME */}
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-[12px] font-bold uppercase tracking-[0.08em] text-[#003466]">
-                            {col}
+                        <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                          <span style={{ overflowWrap: "normal", wordBreak: "normal", hyphens: "none" }} className="whitespace-normal text-[12px] font-bold uppercase tracking-[0.06em] text-[#003466]">
+                            {col.replaceAll("_", " ")}
                           </span>
 
                           <span className="mt-1 text-[10px] text-blue-500 font-semibold">
@@ -2018,7 +1999,8 @@ export default function SearchConsole({
                         </div>
 
                         {/* FILTER INDICATOR */}
-                        <div className="flex items-center gap-1 transition">
+                        <div className="flex shrink-0 items-center gap-1 transition">
+                          <button type="button" title={expandedColumn === col ? "Shrink column" : "Expand column"} aria-label={expandedColumn === col ? `Shrink ${col}` : `Expand ${col}`} onClick={(event) => { event.stopPropagation(); setExpandedColumn(expandedColumn === col ? null : col); }} className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-blue-700"><Expand size={13} /></button>
                           <div
                             className={`w-8 h-8 flex items-center justify-center rounded-xl transition shadow-sm
                 ${
@@ -2265,10 +2247,11 @@ export default function SearchConsole({
                 >
                   <td className="sticky left-0 z-10 border-b border-r border-blue-50 bg-white px-4 py-4 shadow-[8px_0_22px_rgba(15,47,79,0.04)] group-hover:bg-blue-50">
                     <div className="flex items-center gap-3">
+                      <input type="checkbox" aria-label={`Select shipment ${pageOffset + i + 1}`} checked={selectedRows.includes(row)} onChange={(event) => setSelectedRows((current) => event.target.checked ? [...current, row] : current.filter((item) => item !== row))} />
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 font-mono text-[11px] font-bold text-cyan-200 shadow-md">
                         {String(pageOffset + i + 1).padStart(2, "0")}
                       </div>
-                      <button className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100 transition group-hover:bg-blue-600 group-hover:text-white">
+                      <button type="button" aria-label="View all shipment details" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setDetailRow(row); }} className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100 transition group-hover:bg-blue-600 group-hover:text-white">
                         <Eye size={14} />
                       </button>
                     </div>
@@ -2276,9 +2259,10 @@ export default function SearchConsole({
                   {visibleColumns.map((col, ci) => (
                     <td
                       key={col}
-                      className="border-b border-r border-blue-50/80 px-4 py-4 align-middle whitespace-nowrap transition group-hover:border-blue-100"
+                      style={{ width: expandedColumn === col ? 420 : getColumnWidth(col) }}
+                      className="border-b border-r border-blue-50/80 px-2 py-2 align-middle break-normal whitespace-normal transition group-hover:border-blue-100"
                     >
-                      {renderCellContent(row, col, i)}
+                      {renderCellContent(row, col)}
                     </td>
                   ))}
                 </tr>
@@ -2403,7 +2387,15 @@ export default function SearchConsole({
           </motion.div>
         )}
         {/* Legacy advanced-search menu retained for reference.
-        {showAdvance && (
+          {detailRow && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailRow(null)}>
+              <section role="dialog" aria-modal="true" aria-label="Shipment details" className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-xl bg-white p-6 text-slate-800 shadow-xl" onClick={(event) => event.stopPropagation()}>
+                <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">Shipment details</h2><button type="button" onClick={() => setDetailRow(null)} aria-label="Close details"><X size={20} /></button></div>
+                <dl className="grid gap-3 sm:grid-cols-2">{Object.entries(detailRow.__allFields || detailRow).filter(([field]) => field !== "__allFields").map(([field, value]) => <div key={field} className="border-b border-slate-100 py-2"><dt className="text-xs font-medium text-slate-500">{field.replaceAll("_", " ")}</dt><dd className="mt-1 break-words text-sm">{value === null || value === undefined || value === "" ? "-" : typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
+              </section>
+            </motion.div>
+          )}
+          {showAdvance && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -2548,6 +2540,32 @@ export default function SearchConsole({
           </motion.div>
         )}
       </AnimatePresence>
+      {detailRow && (() => {
+        const fields = Object.entries(detailRow.__allFields || detailRow).filter(([field]) => field !== "__allFields");
+        return createPortal(<div className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm" onClick={() => setDetailRow(null)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="shipment-detail-title" className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-7">
+              <div><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Shipment record</p><h2 id="shipment-detail-title" className="mt-1 text-lg font-semibold text-slate-900">All row details</h2><p className="mt-1 text-xs text-slate-500">{fields.length} fields</p></div>
+              <button type="button" onClick={() => setDetailRow(null)} aria-label="Close shipment details" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900"><X size={18} /></button>
+            </header>
+            <dl className="grid gap-px overflow-y-auto bg-slate-200 p-px sm:grid-cols-2 lg:grid-cols-3">{fields.map(([field, value]) => <div key={field} className="min-w-0 bg-white px-4 py-3"><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{field.replaceAll("_", " ")}</dt><dd className="mt-1 break-words text-sm text-slate-900">{value === null || value === undefined || value === "" ? "-" : typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
+          </section>
+        </div>, document.body);
+      })()}
+      {showSaveTableModal && createPortal(<div className="fixed inset-0 z-[10002] flex items-center justify-center bg-slate-950/50 p-4" onClick={() => !isSaving && setShowSaveTableModal(false)}>
+        <form role="dialog" aria-modal="true" aria-labelledby="save-workspace-title" onSubmit={(event) => { event.preventDefault(); handleSaveTable(); }} onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-800 shadow-2xl">
+          <h2 id="save-workspace-title" className="text-lg font-semibold text-slate-900">Save table to workspace</h2>
+          <p className="mt-1 text-sm text-slate-500">Choose a name for this saved table.</p>
+          <label className="mt-5 block text-sm font-medium text-slate-700">Workspace name
+            <input autoFocus maxLength={250} value={workspaceName} onChange={(event) => { setWorkspaceName(event.target.value); setSaveNameError(""); }} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </label>
+          {saveNameError && <p role="alert" className="mt-3 text-sm text-rose-700">{saveNameError}</p>}
+          <div className="mt-6 flex justify-end gap-2">
+            <button type="button" onClick={() => setShowSaveTableModal(false)} disabled={isSaving} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={isSaving} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{isSaving ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      </div>, document.body)}
     </div>
   );
 }

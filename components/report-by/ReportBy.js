@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
-export const reportByOptions = [["Export Country", "Export_Country"], ["Supplier Name", "Supplier_Name"], ["Importer ID", "Importer_ID"], ["Importer Name", "Importer_Name"], ["Unloading Port", "Unloading_Port"], ["Dispatch Port", "Dispatch_Port"], ["HS Code", "HS_Code"], ["Heading", "Heading"], ["Chapter", "Chapter"], ["Month", "Month"], ["Transport Mode", "Transport_Mode"]];
+export const reportByOptions = [["Export Country", "Export_Country"], ["Exporter Name", "Exporter_Name"], ["Importer ID", "Importer_ID"], ["Importer Name", "Importer_Name"], ["Unloading Port", "Unloading_Port"], ["Loading Port", "Loading_Port"], ["HS Code", "HS_Code"], ["Heading", "Heading"], ["Chapter", "Chapter"], ["Month", "month"], ["Transport Mode", "Transport_Mode"]];
 function rowsFrom(data) { if (Array.isArray(data)) return data; for (const key of ["data", "results", "rows", "items", "records"]) if (Array.isArray(data?.[key])) return data[key]; return data?.data && typeof data.data === "object" ? rowsFrom(data.data) : []; }
 function dim(row, field) { return row?.[field] ?? row?.[field.toLowerCase()] ?? row?.dim ?? row?.dimension ?? "-"; }
 function metricValue(row, metric) { return row?.[metric] ?? row?.[metric.toLowerCase()] ?? row?.value ?? row?.metric_value ?? row?.shipment_count ?? 0; }

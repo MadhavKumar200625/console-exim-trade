@@ -1,6 +1,6 @@
 # External API Report: Trade Data Service
 
-**Configuration:** `TRADES_API_BASE_URL` (the application also falls back to `NEXT_PUBLIC_TRADES_API_BASE_URL`)
+**Configuration:** `TRADES_API_BASE_URL` (server-side environment variable; do not expose it as `NEXT_PUBLIC_*`)
 **Base path appended by the application:** `/api/v1/trades`
 **Protocol:** JSON over HTTP(S), `POST` requests
 **Scope:** This report documents only the external trade-data API calls made using the configured trade service base URL. It excludes this project's local `/api` routes, SQL Server, SMTP, and browser navigations.

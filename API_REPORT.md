@@ -139,9 +139,9 @@ When SQL is not configured, profile and usage fallback objects are returned with
 
 ## 4. Trade API payloads and endpoints
 
-Every local trade endpoint requires a session and forwards JSON with `POST` to the configured trade service base URL. The server appends `/api/v1/trades/...`, sends `Content-Type: application/json`, disables caching, and returns the upstream JSON/status. Configuration is read from `TRADES_API_BASE_URL`, falling back to `NEXT_PUBLIC_TRADES_API_BASE_URL`.
+Every local trade endpoint requires a session and forwards JSON with `POST` to the configured trade service base URL. The server appends `/api/v1/trades/...`, sends `Content-Type: application/json`, disables caching, and returns the upstream JSON/status. Configuration is read only from the server-side `TRADES_API_BASE_URL` environment variable.
 
-Common error behavior: the upstream HTTP status is preserved; network/JSON errors generally become 502. Missing service configuration returns a local message (typically 200 with null demo data for search/filters/report/summary, but 503 for trends and aggregations). Search also records its request in SQL `search_log`.
+Common error behavior: the upstream HTTP status is preserved; network/JSON errors generally become 502. Missing service configuration returns a local message (typically 200 with null demo data for search/filters/report/summary, but 503 for trends and aggregations).
 
 ### Trade search payload
 
@@ -257,8 +257,7 @@ The API routes access SQL Server through `mssql` in `lib/db.js`, `lib/userDb.js`
 ## 7. Implementation notes
 
 - Trade proxy requests use `cache: "no-store"` and JSON pass-through. There is no common request schema validator evident in these routes.
-- The trade report, filters, and monthly trend handlers log request payloads to the server console. Treat search filters and company names as potentially sensitive operational data.
-- `POST /api/trades/search` writes the full payload to `search_log` after an upstream response, and also on the missing-base-URL path.
-- Login OTP response can expose `devOtp` when SMTP is not configured; configure SMTP before production.
+- Trade request payloads are not written to application logs or the search usage counter. The usage counter stores an empty query value only.
+- The upstream service base URL is server-only and is not returned in response headers.
 - SQL and SMTP credentials are configuration concerns, and should be managed outside source control (environment/secret management) rather than embedded in tracked source files.
 

@@ -28,7 +28,7 @@ export default function VisualReport({ requestBase, tradeType }) {
     setData(Object.fromEntries(configs.map((report) => [report.id, { rows: [], loading: true, error: "" }])));
     Promise.all(configs.map(async (report) => {
       try {
-        const response = await fetch("/api/trades/trends/monthly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestBase, group_by: report.groupBy, metric }) });
+        const response = await fetch("/api/trades/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...requestBase, group_by: report.groupBy, metric, limit: 100 }) });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload?.message || "Unable to load trend data.");
         return [report.id, { rows: extractRows(payload), loading: false, error: "" }];

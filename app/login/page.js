@@ -11,7 +11,6 @@ function LoginForm() {
   const [step, setStep] = useState("password");
   const [form, setForm] = useState({ email: "", password: "", otp: "" });
   const [message, setMessage] = useState("");
-  const [devOtp, setDevOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function submitLogin(event) {
@@ -26,10 +25,8 @@ function LoginForm() {
         body: JSON.stringify({ email: form.email, password: form.password }),
       });
       const data = await response.json();
-      console.log("[auth] Login API diagnostics:", data.debug || "No diagnostics returned.");
       if (!response.ok) throw new Error(data.message || "Login failed.");
       setStep("otp");
-      setDevOtp(data.devOtp || "");
       setMessage(data.message);
     } catch (error) {
       setMessage(error.message);
@@ -141,7 +138,6 @@ function LoginForm() {
         {message && (
           <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
             {message}
-            {devOtp && <span className="block pt-1 font-mono">Temporary OTP: {devOtp}</span>}
           </div>
         )}
       </motion.div>

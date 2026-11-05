@@ -12,10 +12,7 @@ function demoResponse(message) {
 export async function POST(request) {
   await requireSession();
   const payload = await request.json();
-  console.log("[trades/report] payload", JSON.stringify(payload));
-  const baseUrl =
-    process.env.TRADES_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
+  const baseUrl = process.env.TRADES_API_BASE_URL;
 
   if (!baseUrl) {
     return demoResponse("TRADES_API_BASE_URL is not configured.");
@@ -37,17 +34,14 @@ export async function POST(request) {
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
-    // console.log("[trades/report] response", response.status, JSON.stringify(data));
-
-    return upstreamJson(data, { status: response.status }, endpoint);
+    return upstreamJson(data, { status: response.status });
   } catch (error) {
     return upstreamJson(
       {
-        message: error.message || "Unable to connect to trades report API.",
+        message: "Unable to connect to trades report API.",
         data: null,
       },
       { status: 502 },
-      endpoint,
     );
   }
 }

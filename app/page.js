@@ -10,7 +10,7 @@ import {
   X,
   SlidersHorizontal,
 } from "lucide-react";
-import AdvancedSearchFields from "./search/AdvancedSearchFields";
+import AdvancedSearchFields, { createAdvancedRow } from "./search/AdvancedSearchFields";
 import { COUNTRIES } from "./search/countries";
 import { buildSuggestionPayload } from "@/lib/tradeSuggestions";
 
@@ -27,7 +27,8 @@ export default function Dashboard() {
   const suggestionRequestId = useRef(0);
   const searchBoxRef = useRef(null);
   const [searchType, setSearchType] = useState("hscode");
-  const [advancedRows, setAdvancedRows] = useState([]);
+  const [companyField, setCompanyField] = useState("Importer_Name");
+  const [advancedRows, setAdvancedRows] = useState(() => [createAdvancedRow()]);
   const [dashboard, setDashboard] = useState({
     usage: {
       search: { used: 0, total: 0 },
@@ -78,6 +79,7 @@ export default function Dashboard() {
     const params = new URLSearchParams();
     if (trimmedQuery) params.set("suggestQuery", trimmedQuery);
     params.set("suggestType", searchType);
+    if (searchType === "industry") params.set("suggestCompanyField", companyField);
     if (country) params.set("suggestCountry", country);
     params.set("suggestTradeType", tradeType);
     if (includeAdvanced) {
@@ -108,6 +110,7 @@ export default function Dashboard() {
       const payload = buildSuggestionPayload({
         query: trimmedQuery,
         type: searchType,
+        companyField,
         country,
         tradeType,
         from: "2010-01-01",
@@ -137,7 +140,7 @@ export default function Dashboard() {
       window.clearTimeout(timeout);
       if (suggestionRequestId.current === requestId) suggestionRequestId.current += 1;
     };
-  }, [country, query, searchType, tradeType]);
+  }, [companyField, country, query, searchType, tradeType]);
 
   return (
     <div className="min-h-screen bg-linear-to-b from-[#f5f9ff] to-[#eaf3ff] px-4 sm:px-6 lg:px-8 py-10 text-[#003466] relative overflow-hidden">
@@ -173,16 +176,17 @@ export default function Dashboard() {
       >
         <div className="rounded-[28px] border border-blue-100 bg-white/90 p-4 shadow-[0_18px_45px_rgba(0,52,102,0.10)] backdrop-blur-xl sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
-              {[{ id: "import", label: "Imports" }, { id: "export", label: "Exports" }].map((item) => (
-                <button key={item.id} onClick={() => setTradeType(item.id)} className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${tradeType === item.id ? "bg-white text-[#031c35] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}>{item.label}</button>
-              ))}
-            </div>
+            {country && <div className="flex rounded-2xl bg-[#031c35] p-1 shadow-lg shadow-blue-950/10">
+              {[{ id: "import", label: "Imports" }, { id: "export", label: "Exports" }].map((item) => <button key={item.id} onClick={() => setTradeType(item.id)} className={`rounded-xl px-5 py-2.5 text-sm font-bold transition ${tradeType === item.id ? "bg-white text-[#031c35] shadow-sm" : "text-blue-100 hover:bg-white/10"}`}>{item.label}</button>)}
+            </div>}
             <div className="grid grid-cols-2 rounded-2xl bg-blue-50/70 p-1 text-sm font-semibold shadow-inner">
               {[{ id: "hscode", label: "HS / Product" }, { id: "industry", label: "Company" }].map((item) => (
                 <button key={item.id} onClick={() => setSearchType(item.id)} className={`rounded-xl px-4 py-2 transition ${searchType === item.id ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-blue-700"}`}>{item.label}</button>
               ))}
             </div>
+            {searchType === "industry" && <select value={companyField} onChange={(event) => setCompanyField(event.target.value)} aria-label="Company role" className="rounded-xl border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-[#003466]">
+              <option value="Importer_Name">Importer</option><option value="Exporter_Name">Exporter</option>
+            </select>}
           </div>
           <div className="grid gap-3 xl:grid-cols-[minmax(150px,220px)_minmax(0,1fr)_auto_auto] xl:items-center">
             <select value={country} onChange={(event) => setCountry(event.target.value)} aria-label="Country" className="h-14 rounded-2xl border border-blue-100 bg-white px-4 text-sm font-bold text-[#003466] outline-none focus:ring-2 focus:ring-blue-400">
@@ -193,7 +197,7 @@ export default function Dashboard() {
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 text-white"><Search size={18} /></span>
               <input value={query} onFocus={() => query.trim().length >= 2 && setSuggestionsOpen(true)} onChange={(event) => { setQuery(event.target.value); setSuggestionsOpen(true); setSearchError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); startSearch(); } if (event.key === "Escape") setSuggestionsOpen(false); }} placeholder={searchType === "industry" ? "Search company, importer, or exporter" : "Search HS code, product ..."} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#003466] outline-none placeholder:text-slate-400 sm:text-base" />
               {suggestionsOpen && query.trim().length >= 2 && (suggestions.length > 0 || suggestionsLoading) && (
-                <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-50 overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
+                <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-[99999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
                   {suggestionsLoading && suggestions.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">Loading suggestions…</p> : suggestions.map((item, index) => (
                     <button key={`${item}-${index}`} type="button" onClick={() => applySuggestion(item)} className="block w-full border-b border-blue-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 last:border-0 hover:bg-blue-50">{item}</button>
                   ))}

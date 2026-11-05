@@ -12,9 +12,7 @@ export async function POST(request, { params }) {
     return NextResponse.json({ message: "Unknown aggregation type." }, { status: 404 });
   }
 
-  const baseUrl =
-    process.env.TRADES_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
+  const baseUrl = process.env.TRADES_API_BASE_URL;
 
   if (!baseUrl) {
     return NextResponse.json(
@@ -37,12 +35,11 @@ export async function POST(request, { params }) {
     );
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
-    return upstreamJson(data, { status: response.status }, endpoint);
+    return upstreamJson(data, { status: response.status });
   } catch (error) {
     return upstreamJson(
-      { message: error.message || "Unable to connect to the trade aggregation API.", data: [] },
+      { message: "Unable to connect to the trade aggregation API.", data: [] },
       { status: 502 },
-      endpoint,
     );
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
-import { logSearch } from "@/lib/userDb";
+import { recordSearchUsage } from "@/lib/userDb";
 import { upstreamJson } from "@/lib/upstreamResponse";
 
 function demoResponse(message) {
@@ -13,19 +13,13 @@ function demoResponse(message) {
 export async function POST(request) {
   const session = await requireSession();
   const payload = await request.json();
-  const baseUrl =
-    process.env.TRADES_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
-  const endpoint = baseUrl
-    ? `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`
-    : "/api/v1/trades/search (TRADES_API_BASE_URL not configured)";
-
-  console.info("[trades/search] request", JSON.stringify({ endpoint, payload }));
+  const baseUrl = process.env.TRADES_API_BASE_URL;
 
   if (!baseUrl) {
-    await logSearch(session.masterId, session.userId, payload, payload.Table_Name || "global");
+    await recordSearchUsage(session.masterId, session.userId, payload.Table_Name || "global");
     return demoResponse("TRADES_API_BASE_URL is not configured.");
   }
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`;
 
   try {
     const response = await fetch(
@@ -42,17 +36,15 @@ export async function POST(request) {
 
     const text = await response.text();
     const data = text ? JSON.parse(text) : {};
-    await logSearch(session.masterId, session.userId, payload, payload.Table_Name || "global");
-
-    return upstreamJson(data, { status: response.status }, endpoint);
+    await recordSearchUsage(session.masterId, session.userId, payload.Table_Name || "global");
+    return upstreamJson(data, { status: response.status });
   } catch (error) {
     return upstreamJson(
       {
-        message: error.message || "Unable to connect to trades API.",
+        message: "Unable to connect to trades API.",
         data: [],
       },
       { status: 502 },
-      endpoint,
     );
   }
 }

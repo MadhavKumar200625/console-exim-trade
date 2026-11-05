@@ -1,3 +1,4 @@
+import "server-only";
 import SearchConsole from "./SearchConsole";
 
 function readParam(params, key, fallback = "") {
@@ -52,25 +53,24 @@ function uniqueSuggestions(rows, query, type) {
 
 async function fetchSuggestions(params) {
   const query = readParam(params, "suggestQuery").trim();
-  if (query.length < 2) return { suggestions: [], requestPayload: null, endpoint: null };
+  if (query.length < 2) return [];
 
   const country = readParam(params, "suggestCountry", "");
   const tradeType = readParam(params, "suggestTradeType", "export");
   const type = readParam(params, "suggestType", "hscode");
   const from = readParam(params, "suggestFrom", "2010-01-01");
   const to = readParam(params, "suggestTo", "2026-12-31");
-  const baseUrl =
-    process.env.TRADES_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_TRADES_API_BASE_URL;
+  const baseUrl = process.env.TRADES_API_BASE_URL;
 
-  if (!baseUrl) return { suggestions: [], requestPayload: null, endpoint: null };
+  if (!baseUrl) return [];
   const endpoint = `${baseUrl.replace(/\/$/, "")}/api/v1/trades/search`;
 
   const filters = {};
 
   if (type === "industry") {
-    filters.Product_Description = query;
-    filters.Product_Description_mode = "contains";
+    const companyField = readParam(params, "suggestCompanyField") === "Exporter_Name" ? "Exporter_Name" : "Importer_Name";
+    filters[companyField] = query;
+    filters[`${companyField}_mode`] = "contains";
   } else if (/^[0-9]+$/.test(query)) {
     filters.HS_Code = query;
     filters.HS_Code_mode = query.length >= 8 ? "exact" : "prefix";
@@ -121,17 +121,17 @@ async function fetchSuggestions(params) {
       },
     );
 
-    if (!response.ok) return { suggestions: [], requestPayload: payload, endpoint };
+    if (!response.ok) return [];
 
     const data = await response.json();
-    return { suggestions: uniqueSuggestions(getRows(data), query, type), requestPayload: payload, endpoint };
+    return uniqueSuggestions(getRows(data), query, type);
   } catch {
-    return { suggestions: [], requestPayload: payload, endpoint };
+    return [];
   }
 }
 
 export default async function TradeSearchSuggestionProvider({ searchParams }) {
-  const { suggestions, requestPayload, endpoint } = await fetchSuggestions(searchParams);
+  const suggestions = await fetchSuggestions(searchParams);
 
   // trades/report is intentionally disabled for now because it slows page SSR.
   // Re-enable by fetching the report here and passing it into SearchConsole.
@@ -140,8 +140,6 @@ export default async function TradeSearchSuggestionProvider({ searchParams }) {
     <SearchConsole
       initialSuggestions={suggestions}
       initialSuggestionQuery={readParam(searchParams, "suggestQuery")}
-      initialSuggestionRequestPayload={requestPayload}
-      initialSuggestionEndpoint={endpoint}
     />
   );
 }
