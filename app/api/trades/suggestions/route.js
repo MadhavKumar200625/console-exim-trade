@@ -25,11 +25,22 @@ export async function POST(request) {
       cache: "no-store",
     });
     const text = await response.text();
-    const data = text ? JSON.parse(text) : {};
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = {};
+    }
     const companyField = payload?.filters?.Exporter_Name !== undefined ? "Exporter_Name" : "Importer_Name";
     const suggestions = response.ok ? getTradeSuggestions(data, query, type, companyField) : [];
 
-    return upstreamJson({ suggestions }, { status: response.status });
+    return upstreamJson(
+      {
+        suggestions,
+        ...(response.ok ? {} : { message: "Suggestions are unavailable right now." }),
+      },
+      { status: response.ok ? 200 : 502 },
+    );
   } catch (error) {
     return upstreamJson(
       { suggestions: [], message: "Unable to load search suggestions." },

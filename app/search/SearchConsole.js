@@ -253,6 +253,8 @@ export default function SearchConsole({
   const [query, setQuery] = useState(initialSuggestionQuery);
   const [suggestions, setSuggestions] = useState(initialSuggestions);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
   const suggestionRequestId = useRef(0);
   const [pageSize, setPageSize] = useState(25);
   const [pageOffset, setPageOffset] = useState(0);
@@ -314,11 +316,15 @@ export default function SearchConsole({
     const trimmedQuery = query.trim();
     if (trimmedQuery.length < 2) {
       setSuggestions([]);
+      setSuggestionsLoading(false);
+      setSuggestionError("");
       return undefined;
     }
 
     const requestId = ++suggestionRequestId.current;
     const timeout = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      setSuggestionError("");
       const payload = buildSuggestionPayload({
         query: trimmedQuery,
         type: searchType,
@@ -341,8 +347,14 @@ export default function SearchConsole({
         const data = await response.json();
         if (requestId !== suggestionRequestId.current) return;
         setSuggestions(response.ok && Array.isArray(data.suggestions) ? data.suggestions : []);
+        setSuggestionError(response.ok ? "" : data.message || "Suggestions are unavailable right now.");
       } catch (error) {
-        if (requestId === suggestionRequestId.current) setSuggestions([]);
+        if (requestId === suggestionRequestId.current) {
+          setSuggestions([]);
+          setSuggestionError("Unable to load search suggestions.");
+        }
+      } finally {
+        if (requestId === suggestionRequestId.current) setSuggestionsLoading(false);
       }
     }, 300);
 
@@ -1247,6 +1259,16 @@ export default function SearchConsole({
     });
   }
 
+  function formatDisplayValue(value) {
+    const isDecimalString = typeof value === "string" && /^[+-]?\d+\.\d+$/.test(value);
+    if (typeof value !== "number" && !isDecimalString) return value;
+    const number = Number(value);
+    if (!Number.isFinite(number)) return value;
+    if (typeof value === "number" && Number.isInteger(number)) return value;
+    if (isDecimalString && value.split(".")[1].length <= 2) return value;
+    return String(Number(number.toFixed(2)));
+  }
+
   function formatUsdValue(value) {
     const number = Number(value || 0);
     if (Math.abs(number) >= 1_000_000) {
@@ -1391,7 +1413,8 @@ export default function SearchConsole({
   }
 
   function renderCellContent(row, col) {
-    const value = row[col] || "-";
+    const rawValue = row[col] || "-";
+    const value = formatDisplayValue(rawValue);
 
     if (col === "Date" && value !== "-") {
       const parsedDate = new Date(value);
@@ -1648,7 +1671,7 @@ export default function SearchConsole({
                 </button>
               </div>
 
-              {showSuggestions && suggestions.length > 0 && (
+              {showSuggestions && query.trim().length >= 2 && (suggestions.length > 0 || suggestionsLoading || suggestionError) && (
                 <div className="absolute top-[72px] left-16 right-4 z-[99999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
                   <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-4 py-2">
                     <span className="text-xs font-bold text-[#003466]">Suggestions</span>
@@ -1659,7 +1682,7 @@ export default function SearchConsole({
                       <X size={14} />
                     </button>
                   </div>
-                  {suggestions.map((item, i) => (
+                  {suggestionsLoading && suggestions.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">Loading suggestions…</p> : suggestionError ? <p role="status" className="px-4 py-3 text-sm text-slate-600">{suggestionError}</p> : suggestions.map((item, i) => (
                     <button
                       key={i}
                       onClick={() => {
@@ -2548,7 +2571,7 @@ export default function SearchConsole({
               <div><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Shipment record</p><h2 id="shipment-detail-title" className="mt-1 text-lg font-semibold text-slate-900">All row details</h2><p className="mt-1 text-xs text-slate-500">{fields.length} fields</p></div>
               <button type="button" onClick={() => setDetailRow(null)} aria-label="Close shipment details" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900"><X size={18} /></button>
             </header>
-            <dl className="grid gap-px overflow-y-auto bg-slate-200 p-px sm:grid-cols-2 lg:grid-cols-3">{fields.map(([field, value]) => <div key={field} className="min-w-0 bg-white px-4 py-3"><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{field.replaceAll("_", " ")}</dt><dd className="mt-1 break-words text-sm text-slate-900">{value === null || value === undefined || value === "" ? "-" : typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>
+            <dl className="grid gap-px overflow-y-auto bg-slate-200 p-px sm:grid-cols-2 lg:grid-cols-3">{fields.map(([field, value]) => <div key={field} className="min-w-0 bg-white px-4 py-3"><dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{field.replaceAll("_", " ")}</dt><dd className="mt-1 break-words text-sm text-slate-900">{value === null || value === undefined || value === "" ? "-" : typeof value === "object" ? JSON.stringify(value) : String(formatDisplayValue(value))}</dd></div>)}</dl>
           </section>
         </div>, document.body);
       })()}

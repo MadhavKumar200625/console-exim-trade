@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState("");
   const [searchError, setSearchError] = useState("");
   const suggestionRequestId = useRef(0);
   const searchBoxRef = useRef(null);
@@ -101,20 +102,25 @@ export default function Dashboard() {
     if (trimmedQuery.length < 2) {
       setSuggestions([]);
       setSuggestionsLoading(false);
+      setSuggestionError("");
       return undefined;
     }
 
     const requestId = ++suggestionRequestId.current;
     const timeout = window.setTimeout(async () => {
       setSuggestionsLoading(true);
+      setSuggestionError("");
+      const suggestionEnd = new Date();
+      const suggestionStart = new Date(suggestionEnd);
+      suggestionStart.setFullYear(suggestionStart.getFullYear() - 1);
       const payload = buildSuggestionPayload({
         query: trimmedQuery,
         type: searchType,
         companyField,
         country,
         tradeType,
-        from: "2010-01-01",
-        to: "2026-12-31",
+        from: suggestionStart.toISOString().slice(0, 10),
+        to: suggestionEnd.toISOString().slice(0, 10),
       });
 
       try {
@@ -129,8 +135,12 @@ export default function Dashboard() {
         const data = await response.json();
         if (requestId !== suggestionRequestId.current) return;
         setSuggestions(response.ok && Array.isArray(data.suggestions) ? data.suggestions : []);
+        setSuggestionError(response.ok ? "" : data.message || "Suggestions are unavailable right now.");
       } catch (error) {
-        if (requestId === suggestionRequestId.current) setSuggestions([]);
+        if (requestId === suggestionRequestId.current) {
+          setSuggestions([]);
+          setSuggestionError("Unable to load search suggestions.");
+        }
       } finally {
         if (requestId === suggestionRequestId.current) setSuggestionsLoading(false);
       }
@@ -172,7 +182,7 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="relative max-w-7xl mx-auto mt-8 px-2"
+        className="relative z-40 max-w-7xl mx-auto mt-8 px-2"
       >
         <div className="rounded-[28px] border border-blue-100 bg-white/90 p-4 shadow-[0_18px_45px_rgba(0,52,102,0.10)] backdrop-blur-xl sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -196,9 +206,9 @@ export default function Dashboard() {
             <div ref={searchBoxRef} className="relative flex min-h-14 items-center gap-3 rounded-2xl border border-blue-100 bg-white px-4 shadow-sm focus-within:ring-2 focus-within:ring-blue-400">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 text-white"><Search size={18} /></span>
               <input value={query} onFocus={() => query.trim().length >= 2 && setSuggestionsOpen(true)} onChange={(event) => { setQuery(event.target.value); setSuggestionsOpen(true); setSearchError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); startSearch(); } if (event.key === "Escape") setSuggestionsOpen(false); }} placeholder={searchType === "industry" ? "Search company, importer, or exporter" : "Search HS code, product ..."} className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#003466] outline-none placeholder:text-slate-400 sm:text-base" />
-              {suggestionsOpen && query.trim().length >= 2 && (suggestions.length > 0 || suggestionsLoading) && (
+              {suggestionsOpen && query.trim().length >= 2 && (suggestions.length > 0 || suggestionsLoading || suggestionError) && (
                 <div className="absolute left-0 right-0 top-[calc(100%+10px)] z-[99999] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl">
-                  {suggestionsLoading && suggestions.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">Loading suggestions…</p> : suggestions.map((item, index) => (
+                  {suggestionsLoading && suggestions.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">Loading suggestions…</p> : suggestionError ? <p role="status" className="px-4 py-3 text-sm text-slate-600">{suggestionError}</p> : suggestions.map((item, index) => (
                     <button key={`${item}-${index}`} type="button" onClick={() => applySuggestion(item)} className="block w-full border-b border-blue-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 last:border-0 hover:bg-blue-50">{item}</button>
                   ))}
                 </div>
