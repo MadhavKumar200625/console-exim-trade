@@ -70,7 +70,7 @@ function LoginForm() {
           <div>
             <h1 className="text-2xl font-black tracking-tight">Console Login</h1>
             <p className="mt-1 text-sm font-medium text-slate-500">
-              Secure access with email OTP
+              Secure access with verification code
             </p>
           </div>
         </div>
@@ -114,7 +114,7 @@ function LoginForm() {
         ) : (
           <form onSubmit={submitOtp} className="space-y-4">
             <label className="block text-sm font-bold text-slate-600">
-              Email OTP
+              Verification code
               <input
                 inputMode="numeric"
                 required

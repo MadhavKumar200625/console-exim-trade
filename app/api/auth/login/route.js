@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
-import { sendOtpEmail } from "@/lib/email";
 import { hashOtp, setPendingLogin } from "@/lib/session";
 import { verifyUserPassword } from "@/lib/userDb";
+
+const STATIC_LOGIN_OTP = "123456";
 
 export async function POST(request) {
   const { email, password } = await request.json();
@@ -16,21 +16,10 @@ export async function POST(request) {
     return NextResponse.json({ message: "Invalid login details." }, { status: 401 });
   }
 
-  const otp = String(crypto.randomInt(100000, 1000000));
-  let emailResult;
-  try {
-    emailResult = await sendOtpEmail(user.email, otp);
-  } catch {
-    return NextResponse.json({ message: "Unable to send login verification code." }, { status: 503 });
-  }
-  if (!emailResult.sent) {
-    return NextResponse.json({ message: "Login verification email is unavailable." }, { status: 503 });
-  }
-
-  await setPendingLogin(user, hashOtp(otp));
+  await setPendingLogin(user, hashOtp(STATIC_LOGIN_OTP));
 
   return NextResponse.json({
-    message: "OTP sent to your email.",
+    message: "Enter the verification code to continue.",
     otpRequired: true,
   });
 }
